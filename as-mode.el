@@ -649,12 +649,14 @@ To specify the default query, set `as-decompile-query'."
   "Open scratch buffer for AppleScript."
   (interactive)
   (as-tmp-files-setup)
-  (pop-to-buffer (get-buffer-create "*as-scratch*"))
-  (add-hook 'kill-emacs-hook 'as-save-scratch)
-  (add-hook 'kill-buffer-hook 'as-save-scratch nil t)
-  (insert-file-contents as-tmp-scratch)
-  (goto-char (point-max))
-  (as-mode))
+  (let ((buf (get-buffer "*as-scratch*")))
+    (pop-to-buffer (get-buffer-create "*as-scratch*"))
+    (unless buf
+      (add-hook 'kill-emacs-hook 'as-save-scratch)
+      (add-hook 'kill-buffer-hook 'as-save-scratch nil t)
+      (insert-file-contents as-tmp-scratch)
+      (goto-char (point-max))
+      (as-mode))))
 
 ;; Key code
 (defconst as-key-codes
