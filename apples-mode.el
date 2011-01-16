@@ -1,11 +1,11 @@
-;;; as-mode.el --- Major mode for editing and executing AppleScript code
+;;; apples-mode.el --- Major mode for editing and executing AppleScript code
 
 ;; Copyright (C) 2011 tequilasunset
 
 ;; Author: tequilasunset <tequilasunset.mac@gmail.com>
 ;; Keywords: AppleScript, languages
-(defconst as-mode-version "0.0.1"
-  "The Current version of `as-mode'.")
+(defconst apples-mode-version "0.0.1"
+  "The Current version of `apples-mode'.")
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -28,47 +28,47 @@
 ;;
 ;; Put files in your load-path and add the following to your init file.
 ;;
-;;    (autoload 'as-mode "as-mode" "Happy AppleScripting!" t)
-;;    (autoload 'as-open-scratch "as-mode" "Open scratch buffer for AppleScript." t)
-;;    (add-to-list 'auto-mode-alist '("\\.\\(applescri\\|sc\\)pt\\'" . as-mode))
+;;    (autoload 'apples-mode "apples-mode" "Happy AppleScripting!" t)
+;;    (autoload 'apples-open-scratch "apples-mode" "Open scratch buffer for AppleScript." t)
+;;    (add-to-list 'auto-mode-alist '("\\.\\(applescri\\|sc\\)pt\\'" . apples-mode))
 ;; or
-;;    (require 'as-mode)
-;;    (add-to-list 'auto-mode-alist '("\\.\\(applescri\\|sc\\)pt\\'" . as-mode))
+;;    (require 'apples-mode)
+;;    (add-to-list 'auto-mode-alist '("\\.\\(applescri\\|sc\\)pt\\'" . apples-mode))
 ;;
-;; After that you should byte-compile as-mode.el.
+;; After that you should byte-compile apples-mode.el.
 ;;
-;;    M-x byte-compile-file RET /path/to/as-mode.el RET
+;;    M-x byte-compile-file RET /path/to/apples-mode.el RET
 ;;
 ;; During the byte-compilation, you may get some warnings, but you should
 ;; ignore them.
 ;;
 ;; [FEATURES]
 ;;
-;; Commands for the execution have the prefix `as-run-'. You can see
+;; Commands for the execution have the prefix `apples-run-'. You can see
 ;; the other features via menu.
 ;;
 ;; [CONFIGURATION]
 ;;
 ;; You can access to the customize group via menu or using the command
-;; `as-customize-group'.
+;; `apples-customize-group'.
 ;;
 ;; Here is my configuration.
 ;;
-;; (global-set-key (kbd "C-c a") 'as-open-scratch)
-;; (setq as-underline-syntax-class "w")
+;; (global-set-key (kbd "C-c a") 'apples-open-scratch)
+;; (setq apples-underline-syntax-class "w")
 ;; (setq backward-delete-char-untabify-method 'all)
 ;; (setq imenu-auto-rescan t)
-;; (defun my-as-mode-hook ()
-;;   (local-set-key (kbd "<S-tab>") 'as-toggle-indent)
+;; (defun my-apples-mode-hook ()
+;;   (local-set-key (kbd "<S-tab>") 'apples-toggle-indent)
 ;;   (local-set-key (kbd "RET") 'newline-and-indent)
 ;;   (local-set-key (kbd "DEL") 'backward-delete-char-untabify)
 ;;   (setq imenu-case-fold-search nil)
 ;;   (imenu-add-menubar-index))
-;; (add-hook 'as-mode-hook 'my-as-mode-hook)
+;; (add-hook 'apples-mode-hook 'my-apples-mode-hook)
 ;; (eval-after-load "auto-complete"
 ;;   '(progn
-;;      (add-to-list 'ac-modes 'as-mode)
-;;      (add-hook 'as-mode-hook
+;;      (add-to-list 'ac-modes 'apples-mode)
+;;      (add-hook 'apples-mode-hook
 ;;                (lambda ()
 ;;                  (add-to-list 'ac-sources 'ac-source-applescript)))))
 
@@ -91,136 +91,138 @@
 (require 'easymenu)
 (require 'newcomment)
 
-(defgroup as nil
+(defgroup apples nil
   "Major mode for editing and executing AppleScript code."
   :group 'languages
-  :prefix "as-")
+  :prefix "apples-")
 
 
 ;;; Utilities for internal use
 
-(defconst as-identifier "\\(?:\\sw\\|\\s_\\)+") ; "[[:alnum:]_]+"
+(defconst apples-identifier "\\(?:\\sw\\|\\s_\\)+") ; "[[:alnum:]_]+"
 
-(defmacro as-define-show-func (name var)
-  "Define `as-show-NAME', which is the command to display VAR."
-  `(defun ,(intern (format "as-show-%s" name)) ()
+(defmacro apples-define-show-func (name var)
+  "Define `apples-show-NAME', which is the command to display VAR."
+  `(defun ,(intern (format "apples-show-%s" name)) ()
      (interactive)
      (message "%s" (or ,var ""))))
 
-(as-define-show-func mode-version as-mode-version)
+(apples-define-show-func mode-version apples-mode-version)
 
-(defsubst as-replace-re-comma->spaces (re)
+(defsubst apples-replace-re-comma->spaces (re)
   "Replace all `,'s with `\\\\s-+' in RE."
   (replace-regexp-in-string "," "\\\\s-+" re))
 
 ;; DB
-(defvar as-plist nil)
-(defsubst as-plist-put (prop val)
-  (setq as-plist (plist-put as-plist prop val))
+(defvar apples-plist nil)
+(defsubst apples-plist-put (prop val)
+  (setq apples-plist (plist-put apples-plist prop val))
   val)
-(defsubst as-plist-get (prop)
-  (plist-get as-plist prop))
+(defsubst apples-plist-get (prop)
+  (plist-get apples-plist prop))
 
 ;; temp files
-(defcustom as-tmp-dir nil
+(defcustom apples-tmp-dir nil
   "Specify the path of temp dir. If nil, temp dir will be created to
-the same directory where as-mode.el is located."
+the same directory where apples-mode.el is located."
   :type '(choice directory (const nil))
-  :group 'as)
+  :group 'apples)
 
-(defmacro as-define-tmp-file (name)
-  "Define `as-tmp-NAME'."
+(defmacro apples-define-tmp-file (name)
+  "Define `apples-tmp-NAME'."
   `(progn
-     (defvar ,(intern (format "as-tmp-%s" name)) nil)
-     (let ((files (as-plist-get :tmp-files))
-           (file ',(intern (format "as-tmp-%s" name))))
+     (defvar ,(intern (format "apples-tmp-%s" name)) nil)
+     (let ((files (apples-plist-get :tmp-files))
+           (file ',(intern (format "apples-tmp-%s" name))))
        (unless (memq file files)
-         (as-plist-put :tmp-files (cons file files)))
+         (apples-plist-put :tmp-files (cons file files)))
        file)))
 
-(defun as-tmp-files-setup ()
-  "Make the as-tmp-dir and temp files."
-  (when (as-plist-get :tmp-files)
+(defun apples-tmp-files-setup ()
+  "Make the apples-tmp-dir and temp files."
+  (when (apples-plist-get :tmp-files)
     (let ((dir (expand-file-name
-                (or as-tmp-dir
-                    (concat (file-name-directory (locate-library "as-mode"))
-                            "as-tmp-dir")))))
+                (or apples-tmp-dir
+                    (concat (file-name-directory (locate-library "apples-mode"))
+                            "apples-tmp-dir")))))
       (unless (file-directory-p dir)
         (mkdir dir t))
-      (loop for file in (as-plist-get :tmp-files)
+      (loop for file in (apples-plist-get :tmp-files)
             for tmp = (format "%s/%s.applescript" dir file)
             do
             (set file tmp)
             (unless (file-exists-p tmp)
               (with-temp-file tmp))
-            finally (as-plist-put :tmp-files nil)))))
+            finally (apples-plist-put :tmp-files nil)))))
 
 
 ;;; User variables
 
-(defcustom as-follow-error-position t
+(defcustom apples-follow-error-position t
   "If non-nil, automatically move to the beginning position
 where error has occurred."
   :type 'boolean
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-prefer-coding-system nil
+(defcustom apples-prefer-coding-system nil
   "Specify the coding-system used for the execution of script."
   :type '(choice symbol (const nil))
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-decompile-callback 'as-handle-decompile
-  "Function to handle decompiled text via `as-decompile'.
+(defcustom apples-decompile-callback 'apples-handle-decompile
+  "Function to handle decompiled text via `apples-decompile'.
 It is required two arguments SCRIPT and FILENAME.
 SCRIPT is decompiled script. FILENAME is decompiled file name."
   :type 'function
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-decompile-query nil
+(defcustom apples-decompile-query nil
   "If valid char is specified, handle the output of decompiling
 with specified one. Acceptable chars are as following:\n
 ?o - overwrite file by decompiled script
 ?i - insert decompiled script at point
 ?c - copy decompiled script in clipboard.\n
-If you set `as-decompile-callback' to other value, this is ignored.
-Because this variable is used in `as-handle-decompile'."
+If you set `apples-decompile-callback' to other value, this is ignored.
+Because this variable is used in `apples-handle-decompile'."
   :type '(choice character (const nil))
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-continuation-char ?\x00AC
+(defcustom apples-continuation-char ?\x00AC
   "Continuation character (not sign in mathematics)."
   :type 'character
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-indent-offset 4
+(defcustom apples-indent-offset 4
   "Amount of offset per level of indentation for AppleScript."
   :type 'integer
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-continuation-offset as-indent-offset
+(defcustom apples-continuation-offset apples-indent-offset
   "Extra offset for the lines whose previous line is terminated with
-the continuation character. See also `as-continuation-char'."
+the continuation character. See also `apples-continuation-char'."
   :type 'integer
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-indenters
+(defcustom apples-indenters
   '("considering" "else" "if" "ignoring" "on" "repeat" "tell" "try")
   "Leading words of previous line which invoke the indentation of
 current line.\n
-See also `as-deindenters', `as-indent-regexps' and `as-noindent-regexps'."
+See also `apples-deindenters', `apples-indent-regexps' and
+`apples-noindent-regexps'."
   :type '(repeat string)
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-deindenters
+(defcustom apples-deindenters
   '("else" "end" "on")
   "Leading words of current line which invoke the deindentation.\n
-See also `as-indenters', `as-indent-regexps' and `as-noindent-regexps'."
+See also `apples-indenters', `apples-indent-regexps' and
+ `apples-noindent-regexps'."
   :type '(repeat string)
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-indent-regexps
+(defcustom apples-indent-regexps
   (mapcar
-   (lambda (re) (concat "^\\s-*" (as-replace-re-comma->spaces re)))
+   (lambda (re) (concat "^\\s-*" (apples-replace-re-comma->spaces re)))
    '(;; script foo
      "script,\\<"
      "using,terms,from"
@@ -228,14 +230,14 @@ See also `as-indenters', `as-indent-regexps' and `as-noindent-regexps'."
      "with,transaction"
      ))
   "Regexps match to previous line, which invoke the indentation of
-current line. This variable has priority over `as-indenters'.\n
-See also `as-deindenters' and `as-noindent-regexps'."
+current line. This variable has priority over `apples-indenters'.\n
+See also `apples-deindenters' and `apples-noindent-regexps'."
   :type '(repeat regexp)
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-noindent-regexps
+(defcustom apples-noindent-regexps
   (mapcar
-   (lambda (re) (concat "^\\s-*" (as-replace-re-comma->spaces re)))
+   (lambda (re) (concat "^\\s-*" (apples-replace-re-comma->spaces re)))
    '(;; if foo then bar
      "if\\>.+\\<then,\\<"
      ;; tell application "foo" to bar
@@ -244,57 +246,57 @@ See also `as-deindenters' and `as-noindent-regexps'."
   "Regexps match to previous line, which invoke the no-indentation of
 current line. It means that the indentation of current line will
 be same as previous line's one. This variable has priority over
-`as-indent-regexps'.\n
-See also `as-indenters' and `as-deindenters'."
+`apples-indent-regexps'.\n
+See also `apples-indenters' and `apples-deindenters'."
   :type '(repeat regexp)
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-keymap
-  '(("<S-tab>"   . as-toggle-indent)
-    ("C-c t r"   . as-run-region/buffer)
-    ("C-c t k"   . as-compile)
-    ("C-c t d"   . as-decompile)
-    ("C-c t 3"   . as-show-last-result)
-    ("C-c t l"   . as-insert-continuation-char)
-    ("C-c t RET" . as-insert-continuation-char-and-newline)
-    ("C-c t o"   . as-open-dict-index)
-    ;; ("C-c t s"   . as-send-to-applescript-editor)
+(defcustom apples-keymap
+  '(("<S-tab>"   . apples-toggle-indent)
+    ("C-c t r"   . apples-run-region/buffer)
+    ("C-c t k"   . apples-compile)
+    ("C-c t d"   . apples-decompile)
+    ("C-c t 3"   . apples-show-last-result)
+    ("C-c t l"   . apples-insert-continuation-char)
+    ("C-c t RET" . apples-insert-continuation-char-and-newline)
+    ("C-c t o"   . apples-open-dict-index)
+    ;; ("C-c t s"   . apples-send-to-applescript-editor)
     )
-  "Alist of keybindings for `as-mode'. Each element should be the form
+  "Alist of keybindings for `apples-mode'. Each element should be the form
 \(KEY . COMMAND). KEY must be a string read by `kbd'.
 If the value is nil, nothing will be set."
   :type '(repeat (cons string symbol))  ; Can't set to nil via customize group?
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-underline-syntax-class nil
+(defcustom apples-underline-syntax-class nil
   "Specify syntax class of `_' (underline).
 For example, \"w\" means a word, \"_\" means a symbol.
 If nil, treated as a symbol."
   :type '(choice string (const nil))
   :link '(info-link "(elisp)Syntax Class Table")
-  :group 'as)
+  :group 'apples)
 
-(defcustom as-mode-hook nil
-  "Hook executed just after called `as-mode'."
+(defcustom apples-mode-hook nil
+  "Hook executed just after called `apples-mode'."
   :type 'hook
-  :group 'as)
+  :group 'apples)
 
 (defcustom ac-source-applescript
-  '((candidates . (as-keywords))
+  '((candidates . (apples-keywords))
     (symbol . "d")
     (cache))
   "Source for keywords of AppleScript. This is an additional source for
 `auto-complete-mode'."
   :type 'sexp
   :link '(url-link "http://github.com/m2ym/auto-complete")
-  :group 'as)
+  :group 'apples)
 
 ;; Faces
 (macrolet ((face (name &rest attrs)
-                 `(defface ,(intern (format "as-%s" name))
+                 `(defface ,(intern (format "apples-%s" name))
                     '((t (,@attrs)))
                     ,(subst-char-in-string ?- ? (format "Face for %s." name))
-                    :group 'as)))
+                    :group 'apples)))
   (face statements :inherit font-lock-keyword-face)
   (face commands :inherit font-lock-keyword-face :italic t)
   (face operators :inherit font-lock-type-face)
@@ -312,30 +314,30 @@ If nil, treated as a symbol."
 
 ;;; Process
 
-(as-define-show-func last-result (as-plist-get :last-result))
-(as-define-show-func last-raw-result (as-plist-get :last-raw-result))
+(apples-define-show-func last-result (apples-plist-get :last-result))
+(apples-define-show-func last-raw-result (apples-plist-get :last-raw-result))
 
-(defmacro as-set-run-info (&optional pred beg buf)
+(defmacro apples-set-run-info (&optional pred beg buf)
   "If passed PRED, record BEG (or 1) and BUF (or current buffer).
 If PRED is omitted or returns nil, delete stored info."
   (declare (indent 0))
-  `(as-plist-put :run-info (if ,pred
-                               (cons (or ,beg 1) (or ,buf (current-buffer)))
-                             (cons nil nil))))
+  `(apples-plist-put :run-info (if ,pred
+                                   (cons (or ,beg 1) (or ,buf (current-buffer)))
+                                 (cons nil nil))))
 
-(defun as-delete-error-overlay ()
-  (let ((ov (as-plist-get :err-ov)))
+(defun apples-delete-error-overlay ()
+  (let ((ov (apples-plist-get :err-ov)))
     (when (overlayp ov)
       (delete-overlay ov))))
 
-(defun as-error-overlay-setup ()
-  (let ((ov (as-plist-get :err-ov)))
+(defun apples-error-overlay-setup ()
+  (let ((ov (apples-plist-get :err-ov)))
     (if ov
         (move-overlay ov 1 1)
       (setq ov (make-overlay 1 1))
-      (overlay-put ov 'face 'as-error-highlight)
-      (as-plist-put :err-ov ov)))
-  (add-hook 'post-command-hook 'as-delete-error-overlay nil t))
+      (overlay-put ov 'face 'apples-error-highlight)
+      (apples-plist-put :err-ov ov)))
+  (add-hook 'post-command-hook 'apples-delete-error-overlay nil t))
 
 ;; FIXME: This workaround is not a perfect. Sometimes get the error like the
 ;; followings.
@@ -344,24 +346,24 @@ If PRED is omitted or returns nil, delete stored info."
 ;;    A property can’t go after this “\"”.
 ;;
 ;; The cause of them may be the coding of temp file.
-(as-define-tmp-file 1713)
-(defun as-error-1713-workaround (f/s)
+(apples-define-tmp-file 1713)
+(defun apples-error-1713-workaround (f/s)
   "Avoid AppleScript's error -1713.\n
    execution error: No user interaction allowed. (-1713)"
   ;; Ref: <http://macscripter.net/viewtopic.php?id=26334>
   (unless (file-exists-p f/s)
-    (with-temp-file as-tmp-1713
+    (with-temp-file apples-tmp-1713
       (insert f/s))
-    (setq f/s as-tmp-1713))
-  (as-do-applescript
+    (setq f/s apples-tmp-1713))
+  (apples-do-applescript
    (format
     "tell application \"AppleScript Runner\" to do script \"%s\"" f/s)))
 
-(defun as-parse-error (result)
+(defun apples-parse-error (result)
   (destructuring-bind
       (err-ov (actual-beg . err-buf)
               &aux err-beg err-end err-type err-msg err-num unknown)
-      (values (as-plist-get :err-ov) (as-plist-get :run-info))
+      (values (apples-plist-get :err-ov) (apples-plist-get :run-info))
     (if (string-match
          "\\([0-9]+\\):\\([0-9]+\\): \\([^:]+:\\) \\(.+\\) (\\(-[0-9]+\\))$"
          result)
@@ -383,26 +385,26 @@ If PRED is omitted or returns nil, delete stored info."
      ;; err-buf returns nil.
      err-buf err-ov)))
 
-(defun as-result (result status f/s)
+(defun apples-result (result status f/s)
   "Handle the result of AppleScript's execution.
 If execution has done successfully, display the result.
 If error has occurred, display the error.
 In that case, if executed script is same as current buffer or in it,
 also highlight the error region and go to the beginning of it if
-`as-follow-error-position' is non-nil."
+`apples-follow-error-position' is non-nil."
   (block nil
-    (as-plist-put :last-raw-result result)
+    (apples-plist-put :last-raw-result result)
     (setq result
           (if (= status 1)
               ;; error
               (multiple-value-bind (unknown beg end type msg num buf ov)
-                  (as-parse-error result)
+                  (apples-parse-error result)
                 ;; -1713
-                (when (= num -1713)
-                  (return-from nil (as-error-1713-workaround f/s)))
+                (when (eq num -1713)
+                  (return-from nil (apples-error-1713-workaround f/s)))
                 (when (and beg buf)
                   ;; highlight and move
-                  (when as-follow-error-position
+                  (when apples-follow-error-position
                     (switch-to-buffer buf)
                     (goto-char beg)
                     (deactivate-mark))
@@ -410,21 +412,23 @@ also highlight the error region and go to the beginning of it if
                 ;; res
                 (if unknown
                     result
-                  (concat (propertize (concat type " ") 'face 'as-error-prompt)
+                  (concat (propertize (concat type " ")
+                                      'face 'apples-error-prompt)
                           msg)))
             ;; no error
-            (concat (propertize "Result: " 'face 'as-result-prompt) result)))
-    (as-set-run-info)
-    (message (as-plist-put :last-result result))))
+            (concat (propertize "Result: " 'face 'apples-result-prompt)
+                    result)))
+    (apples-set-run-info)
+    (message (apples-plist-put :last-result result))))
 
-(defsubst as-proc-live-p (proc)
+(defsubst apples-proc-live-p (proc)
   "Return non-nil if PROC is still running."
   (and (processp proc)
        (not (eq (process-status proc) 'exit))
        (= (process-exit-status proc) 0)
        t))
 
-(defsubst as-buffer-string (&optional buffer-or-name)
+(defsubst apples-buffer-string (&optional buffer-or-name)
   "Return contents of a currnet buffer or BUFFER-OR-NAME.
 Also delete the entire contents of the buffer."
   (with-current-buffer (or buffer-or-name (current-buffer))
@@ -434,75 +438,75 @@ Also delete the entire contents of the buffer."
               (point-min) (1- (point-max)))
         (erase-buffer)))))
 
-(defsubst as-proc-failed-p (proc)
+(defsubst apples-proc-failed-p (proc)
   "Return non-nil, if PROC has been failed."
   (= (process-exit-status proc) 1))
 
-(defsubst as-proc-failed (msg buf)
+(defsubst apples-proc-failed (msg buf)
   "Display BUF's contents or MSG added 'missed message.
 After that, delete BUF's contents."
-  (let ((str (as-buffer-string buf)))
+  (let ((str (apples-buffer-string buf)))
     (message (or (and (not (string= str "")) str)
                  (concat msg "missed")))))
 
-(defsubst as-encode-string (str)
-  "Encode STR to `as-prefer-coding-system' if it is specified."
-  (if as-prefer-coding-system
-      (encode-coding-string str as-prefer-coding-system)
+(defsubst apples-encode-string (str)
+  "Encode STR to `apples-prefer-coding-system' if it is specified."
+  (if apples-prefer-coding-system
+      (encode-coding-string str apples-prefer-coding-system)
     str))
 
-(defun as-do-applescript (filename-or-script &optional callback)
+(defun apples-do-applescript (filename-or-script &optional callback)
   "Execute FILENAME-OR-SCRIPT as AppleScript. CALLBACK is required
 three arguments RESULT, EXIT-PROC-STATUS and FILENAME-OR-SCRIPT.
-If CALLBACK is omitted, call `as-result'."
+If CALLBACK is omitted, call `apples-result'."
   (lexical-let* ((f/s filename-or-script)
                  (callback callback)
-                 (buf (get-buffer-create " *as-do-applescript*"))
+                 (buf (get-buffer-create " *apples-do-applescript*"))
                  (args (if (file-exists-p f/s)
                            `(,f/s)
-                         `("-e" ,(as-encode-string f/s))))
+                         `("-e" ,(apples-encode-string f/s))))
                  (old-proc (get-buffer-process buf))
-                 (enable (if (as-proc-live-p old-proc)
+                 (enable (if (apples-proc-live-p old-proc)
                              (when (y-or-n-p "\
-as-do-applescript: Process is still running; kill it? ")
+apples-do-applescript: Process is still running; kill it? ")
                                (progn
                                  (kill-process old-proc)
                                  t))
                            t)))
     (when enable
       (set-process-sentinel
-       (apply 'start-process "as-do-applescript" buf "osascript" args)
+       (apply 'start-process "apples-do-applescript" buf "osascript" args)
        (lambda (proc _)
-         (funcall (or callback 'as-result)
-                  (as-buffer-string buf)
+         (funcall (or callback 'apples-result)
+                  (apples-buffer-string buf)
                   (process-exit-status proc)
                   f/s))))))
 
 ;; Compile
-(defun as-compile (filename)
+(defun apples-compile (filename)
   "Compile FILENAME."
   (interactive
    (list (read-file-name "File: " buffer-file-name buffer-file-name)))
   (lexical-let* ((filename (expand-file-name filename))
                  (msg (message "Compiling...")))
     (set-process-sentinel
-     (start-process "as-compile" nil "osacompile" filename)
+     (start-process "apples-compile" nil "osacompile" filename)
      (lambda (proc _)
-       (if (as-proc-failed-p proc)
+       (if (apples-proc-failed-p proc)
            (message "%smissed" msg)
          (message "%sdone" msg))))))
 
 ;; Decompile
-(defun as-handle-decompile (script filename)
+(defun apples-handle-decompile (script filename)
   "Default function to handle decompiled script.
-To specify the default query, set `as-decompile-query'."
-  (case (or as-decompile-query
+To specify the default query, set `apples-decompile-query'."
+  (case (or apples-decompile-query
             (ignore-errors
               (flet ((prop (s) (propertize (concat "[" (upcase s) "]")
                                            'face '(:weight bold))))
                 (read-char
                  (format "%s%sverwrite file %snsert script %sopy script"
-                         (propertize "Select: " 'face 'as-result-prompt)
+                         (propertize "Select: " 'face 'apples-result-prompt)
                          (prop "o") (prop "i") (prop "c"))))))
     (?o (with-temp-file filename
           (insert script)))
@@ -511,33 +515,33 @@ To specify the default query, set `as-decompile-query'."
           (insert script)
           (kill-ring-save (point-min) (point-max))))))
 
-(defun as-decompile (filename)
-  "Decompile FILENAME. See also `as-decompile-query' and
-`as-decompile-callback'."
+(defun apples-decompile (filename)
+  "Decompile FILENAME. See also `apples-decompile-query' and
+`apples-decompile-callback'."
   (interactive
    (list (read-file-name "File: " buffer-file-name buffer-file-name)))
   (lexical-let* ((filename (expand-file-name filename))
-                 (buf (get-buffer-create " *as-decompile*"))
+                 (buf (get-buffer-create " *apples-decompile*"))
                  msg)
     (when (file-exists-p filename)
       (setq msg (message "Decompiling..."))
       (set-process-sentinel
-       (start-process "as-decompile" buf "osadecompile" filename)
+       (start-process "apples-decompile" buf "osadecompile" filename)
        (lambda (proc _)
-         (if (as-proc-failed-p proc)
-             (as-proc-failed msg buf)
-           (funcall as-decompile-callback
-                    (as-buffer-string buf)
+         (if (apples-proc-failed-p proc)
+             (apples-proc-failed msg buf)
+           (funcall apples-decompile-callback
+                    (apples-buffer-string buf)
                     filename)))))))
 
 ;; FIXME: I don't know the way of reverting...
 ;; ;; Send script to AppleScript Editor
-;; (defun as-open (&rest args)
+;; (defun apples-open (&rest args)
 ;;   "Run command `open' with ARGS (sync)."
 ;;   (apply 'call-process "open" nil nil nil args))
 
-;; (as-define-tmp-file send)
-;; (defun as-send-to-applescript-editor ()
+;; (apples-define-tmp-file send)
+;; (defun apples-send-to-applescript-editor ()
 ;;   "Send region or current buffer to AppleScript Editor and run it."
 ;;   (interactive)
 ;;   (multiple-value-bind (beg end)
@@ -545,9 +549,9 @@ To specify the default query, set `as-decompile-query'."
 ;;           (values (region-beginning) (region-end))
 ;;         (values (point-min) (point-max)))
 ;;     (let ((script (buffer-substring-no-properties beg end)))
-;;       (with-temp-file as-tmp-send
+;;       (with-temp-file apples-tmp-send
 ;;         (insert script)))
-;;     (when (= (as-open "-a" "AppleScript Editor" as-tmp-send) 0)
+;;     (when (= (apples-open "-a" "AppleScript Editor" apples-tmp-send) 0)
 ;;       (do-applescript
 ;;        (mapconcat
 ;;         'identity
@@ -562,48 +566,48 @@ To specify the default query, set `as-decompile-query'."
 ;;; Commands
 
 ;; Run
-(defun as-run-file (&optional filename)
+(defun apples-run-file (&optional filename)
   "Execute FILENAME as AppleScript."
   (interactive "fFile: ")
   (setq filename (expand-file-name filename))
   (when (file-exists-p filename)
-    (as-set-run-info
+    (apples-set-run-info
       (eq (get-file-buffer filename)
           (current-buffer)))
-    (as-do-applescript filename)))
+    (apples-do-applescript filename)))
 
-(defun as-run-buffer (&optional buffer-or-name)
+(defun apples-run-buffer (&optional buffer-or-name)
   "Execute a current buffer or BUFFER-OR-NAME as AppleScript."
   (interactive)
   (or buffer-or-name (setq buffer-or-name (current-buffer)))
-  (as-set-run-info
+  (apples-set-run-info
     (eq (or (get-buffer buffer-or-name)
             buffer-or-name)
         (current-buffer)))
   (with-current-buffer buffer-or-name
-    (as-do-applescript (buffer-string))))
+    (apples-do-applescript (buffer-string))))
 
-(defun as-run-region (beg end)
+(defun apples-run-region (beg end)
   "Execute region as AppleScript."
   (interactive "r")
   (when (/= beg end)
-    (as-set-run-info t beg)
-    (as-do-applescript (buffer-substring beg end))))
+    (apples-set-run-info t beg)
+    (apples-do-applescript (buffer-substring beg end))))
 
-(defun as-run-region/buffer ()
+(defun apples-run-region/buffer ()
   "Execute region or current buffer as AppleScript."
   (interactive)
   (if (use-region-p)
-      (call-interactively 'as-run-region)
-    (as-run-buffer)))
+      (call-interactively 'apples-run-region)
+    (apples-run-buffer)))
 
-(defun as-run-minibuf (script)
+(defun apples-run-minibuf (script)
   "Read script from minibuffer and execute it as AppleScript."
   (interactive "sScript: ")
-  (as-do-applescript script))
+  (apples-do-applescript script))
 
 ;; Open Dictionary index
-(defun as-open-dict-index ()
+(defun apples-open-dict-index ()
   "Open dictionary index in AppleScript Editor."
   (interactive)
   (do-applescript
@@ -618,48 +622,48 @@ To specify the default query, set `as-decompile-query'."
     "\n")))
 
 ;; Insert continuation character
-(defsubst as-continuation-char ()
+(defsubst apples-continuation-char ()
   "Return the continuation character as a string."
-  (char-to-string as-continuation-char))
+  (char-to-string apples-continuation-char))
 
-(defun as-insert-continuation-char ()
+(defun apples-insert-continuation-char ()
   "Insert the continuation character."
   (interactive "^")
   (when (re-search-backward "\\s-+\\=" nil t)
     (delete-region (match-beginning 0) (match-end 0)))
-  (insert ? as-continuation-char))
+  (insert ? apples-continuation-char))
 
-(defun as-insert-continuation-char-and-newline ()
+(defun apples-insert-continuation-char-and-newline ()
   "Insert the continuation character, then add newline."
   (interactive "^")
-  (as-insert-continuation-char)
+  (apples-insert-continuation-char)
   (call-interactively (key-binding (kbd "RET"))))
 
 ;; Scratch buffer for AppleScript
-(as-define-tmp-file scratch)
-(defun as-save-scratch ()
-  "Write the contents of *as-scratch* to temp file (as-tmp-scratch)."
-  (let ((buf (get-buffer "*as-scratch*")))
+(apples-define-tmp-file scratch)
+(defun apples-save-scratch ()
+  "Write the contents of *apples-scratch* to temp file."
+  (let ((buf (get-buffer "*apples-scratch*")))
     (when buf
       (with-current-buffer buf
-        (write-region (point-min) (point-max) as-tmp-scratch nil 'quiet)))))
+        (write-region (point-min) (point-max) apples-tmp-scratch nil 'quiet)))))
 
 ;;;###autoload
-(defun as-open-scratch ()
+(defun apples-open-scratch ()
   "Open scratch buffer for AppleScript."
   (interactive)
-  (as-tmp-files-setup)
-  (let ((buf (get-buffer "*as-scratch*")))
-    (pop-to-buffer (get-buffer-create "*as-scratch*"))
+  (apples-tmp-files-setup)
+  (let ((buf (get-buffer "*apples-scratch*")))
+    (pop-to-buffer (get-buffer-create "*apples-scratch*"))
     (unless buf
-      (add-hook 'kill-emacs-hook 'as-save-scratch)
-      (add-hook 'kill-buffer-hook 'as-save-scratch nil t)
-      (insert-file-contents as-tmp-scratch)
+      (add-hook 'kill-emacs-hook 'apples-save-scratch)
+      (add-hook 'kill-buffer-hook 'apples-save-scratch nil t)
+      (insert-file-contents apples-tmp-scratch)
       (goto-char (point-max))
-      (as-mode))))
+      (apples-mode))))
 
 ;; Key code
-(defconst as-key-codes
+(defconst apples-key-codes
   '((?a . 0) (?b . 11) (?c . 8) (?d . 2) (?e . 14) (?f . 3) (?g . 5) (?h . 4)
     (?i . 34) (?j . 38) (?k . 40) (?l . 37) (?m . 46) (?n . 45) (?o . 31)
     (?p . 35) (?q . 12) (?r . 15) (?s . 1) (?t . 17) (?u . 32) (?v . 9)
@@ -671,36 +675,36 @@ To specify the default query, set `as-decompile-query'."
     (right . 124) (down . 125) (up . 126))
   "Index of key codes. Each element has the form (CHAR-OR-SYMBOL . KEY-CODE).")
 
-(defun as-lookup-key->key-code ()
+(defun apples-lookup-key->key-code ()
   "Look up key code of AppleScript from key."
   (interactive)
   (clear-this-command-keys)
   (message (propertize "Key: " 'face 'minibuffer-prompt))
   (let* ((key (read-event))
-         (key-code (cdr (assq key as-key-codes)))
+         (key-code (cdr (assq key apples-key-codes)))
          (key (if (integerp key) (char-to-string key) key)))
     (if key-code
         (message (format "Key: %s  Key code: %d" key key-code))
       (message "Not found %s" key))))
 
-(defun as-lookup-key-code->key (key-code)
+(defun apples-lookup-key-code->key (key-code)
   "Look up key from key code of AppleScript."
   (interactive "nKey code: ")
-  (let* ((key (car (rassq key-code as-key-codes)))
+  (let* ((key (car (rassq key-code apples-key-codes)))
          (key (if (integerp key) (char-to-string key) key)))
     (if key
         (message (format "Key: %s  Key code: %d" key key-code))
       (message "Not found %d" key-code))))
 
 ;; Comment
-(defun as-comment-or-uncomment-region (beg end &optional arg)
-  "`comment-or-uncomment-region' for `as-mode'."
+(defun apples-comment-or-uncomment-region (beg end &optional arg)
+  "`comment-or-uncomment-region' for `apples-mode'."
   (interactive "*r\nP")
   (let ((comment-style 'indent))
     (comment-or-uncomment-region beg end arg)))
 
-(defun as-comment-dwim (arg)
-  "`comment-dwim' for `as-mode'."
+(defun apples-comment-dwim (arg)
+  "`comment-dwim' for `apples-mode'."
   (interactive "*P")
   (let ((comment-style 'indent))
     (comment-dwim arg)))
@@ -708,18 +712,18 @@ To specify the default query, set `as-decompile-query'."
 
 ;;; Indentation
 
-(defsubst as-in-string/comment-p (&optional pos)
+(defsubst apples-in-string/comment-p (&optional pos)
   "Return non-nil, if POS is in string or in comment."
   (save-excursion
     (let ((ppss (syntax-ppss pos)))
       (or (nth 3 ppss) (nth 4 ppss)))))
 
-(defsubst as-in-string-p (&optional pos)
+(defsubst apples-in-string-p (&optional pos)
   "Return non-nil, if POS is in string."
   (save-excursion
     (nth 3 (syntax-ppss pos))))
 
-(defsubst as-ideal-prev-bol ()
+(defsubst apples-ideal-prev-bol ()
   "Return the point of previous bol or nil. Empty lines, lines filled by
 whitespaces and lines whose bol is in string or in comment are skipped."
   (save-excursion
@@ -727,19 +731,19 @@ whitespaces and lines whose bol is in string or in comment are skipped."
           while (not (bobp))
           do (forward-line -1)
           unless (or (looking-at "\\s-*$")
-                     (as-in-string/comment-p))
+                     (apples-in-string/comment-p))
           return (point))))
 
-(defsubst as-leading-word-of-line ()
+(defsubst apples-leading-word-of-line ()
   "Return the leading word of line as a string.
 If leading char except whitespaces is not a word, return nil."
   (save-excursion
     (beginning-of-line)
-    (when (looking-at (concat "\\s-*\\(" as-identifier "\\)"))
+    (when (looking-at (concat "\\s-*\\(" apples-identifier "\\)"))
       (buffer-substring-no-properties
        (match-beginning 1) (match-end 1)))))
 
-(defsubst as-line-string ()
+(defsubst apples-line-string ()
   "Return the contents of current line as a string. Leading and trailing
 whitespaces are deleted."
   (let (beg end)
@@ -752,33 +756,33 @@ whitespaces are deleted."
       (setq end (point)))
     (buffer-substring-no-properties beg end)))
 
-(defsubst as-string-match (regexps string)
+(defsubst apples-string-match (regexps string)
   "Unlike `string-match', first argument has to be a list of REGEXPS."
   (some (lambda (re) (string-match re string)) regexps))
 
-(defun as-parse-lines ()
+(defun apples-parse-lines ()
   "Parse current and previous lines then return the values."
-  (let ((prev-bol (as-ideal-prev-bol))
-        (cchar-re (concat (as-continuation-char) "\\s-*$"))
+  (let ((prev-bol (apples-ideal-prev-bol))
+        (cchar-re (concat (apples-continuation-char) "\\s-*$"))
         prev-indent prev-lword prev-lstr pprev-bol prev-cchar-p pprev-cchar-p)
     (flet ((cchar? (lstr) (string-match cchar-re lstr)))
       (when prev-bol
         (save-excursion
           (goto-char prev-bol)
           (setq prev-indent (current-indentation)
-                prev-lword (as-leading-word-of-line)
-                prev-lstr (as-line-string)
+                prev-lword (apples-leading-word-of-line)
+                prev-lstr (apples-line-string)
                 prev-cchar-p (cchar? prev-lstr))
           ;; Parse previous line again for continuation char.
-          (when (setq pprev-bol (as-ideal-prev-bol))
+          (when (setq pprev-bol (apples-ideal-prev-bol))
             (goto-char pprev-bol)
-            (setq pprev-cchar-p (cchar? (as-line-string))))))
+            (setq pprev-cchar-p (cchar? (apples-line-string))))))
       (values
-       (current-column) (current-indentation) (as-leading-word-of-line)
+       (current-column) (current-indentation) (apples-leading-word-of-line)
        ;; If prev-bol is nil, belows return nil.
        prev-bol prev-indent prev-lword prev-lstr prev-cchar-p pprev-cchar-p))))
 
-(defun as-indent-line ()
+(defun apples-indent-line ()
   "Indent current line according to AppleScript indentation rules."
   (interactive "^")
   (let* ((bol-ppss (save-excursion (syntax-ppss (point-at-bol))))
@@ -790,36 +794,36 @@ whitespaces are deleted."
       (multiple-value-bind
           (cur-col cur-indent cur-lword prev-bol prev-indent
                    prev-lword prev-lstr prev-cchar-p pprev-cchar-p)
-          (as-parse-lines)
+          (apples-parse-lines)
         (if bol-is-in-comment
             (setq indent (or prev-indent 0))
           ;; bol is neither in string nor in comment
-          (flet ((match? (regs str) (and regs str (as-string-match regs str)))
+          (flet ((match? (regs str) (and regs str (apples-string-match regs str)))
                  (member? (str lst) (and str lst (member str lst))))
             (let* ((cchar-indent?   (and prev-cchar-p (not pprev-cchar-p)))
-                   (prev-indent?    (match? as-indent-regexps prev-lstr))
-                   (prev-noindent?  (match? as-noindent-regexps prev-lstr))
+                   (prev-indent?    (match? apples-indent-regexps prev-lstr))
+                   (prev-noindent?  (match? apples-noindent-regexps prev-lstr))
                    (cchar-deindent? (and (not prev-cchar-p) pprev-cchar-p))
-                   (prev-indenter?  (member? prev-lword as-indenters))
-                   (cur-deindenter? (member? cur-lword as-deindenters)))
+                   (prev-indenter?  (member? prev-lword apples-indenters))
+                   (cur-deindenter? (member? cur-lword apples-deindenters)))
               ;; Calculating...
               (setq indent (- (cond ((and cchar-indent? (not prev-noindent?))
                                      ;; indent by cchar offset
-                                     (+ prev-indent as-continuation-offset))
+                                     (+ prev-indent apples-continuation-offset))
                                     ((and (or prev-indent? prev-indenter?)
                                           (not prev-noindent?))
                                      ;; indent
-                                     (+ prev-indent as-indent-offset))
+                                     (+ prev-indent apples-indent-offset))
                                     (cchar-deindent?
                                      ;; deindent by cchar offset
-                                     (- prev-indent as-continuation-offset))
+                                     (- prev-indent apples-continuation-offset))
                                     ;; same as prev
                                     (prev-indent)
                                     ;; noindent
                                     (t cur-indent))
                               (if cur-deindenter?
                                   ;; deindent
-                                  as-indent-offset
+                                  apples-indent-offset
                                 ;; noindent
                                 0))))))
         ;; Now indent line.
@@ -827,18 +831,18 @@ whitespaces are deleted."
         (when (> (- cur-col cur-indent) 0)
           (goto-char (+ pos (- (current-indentation) cur-indent))))))))
 
-(defun as-toggle-indent ()
+(defun apples-toggle-indent ()
   "Toggle indentation."
   (interactive "^")
-  (unless (as-in-string-p (point-at-bol))
+  (unless (apples-in-string-p (point-at-bol))
     (multiple-value-bind
         (cur-col cur-indent _1 _2 prev-indent _3 _4 prev-cchar-p pprev-cchar-p)
-        (as-parse-lines)
+        (apples-parse-lines)
       (let* ((pos (point))
              (diff (- prev-indent cur-indent))
              (offset (if (or prev-cchar-p pprev-cchar-p)
-                         as-continuation-offset
-                       as-indent-offset))
+                         apples-continuation-offset
+                       apples-indent-offset))
              (indent (cond ((> diff 0) prev-indent)
                            ((= diff 0) (+ prev-indent offset))
                            (t (- prev-indent offset)))))
@@ -850,7 +854,7 @@ whitespaces are deleted."
 
 ;;; Font lock
 
-(defconst as-keywords
+(defconst apples-keywords
   `((reserved-words
      . ("about" "above" "after" "against" "and" "apart from" "around" "as"
         "aside from" "at" "back" "before" "beginning" "behind" "below" "beneath"
@@ -1033,76 +1037,76 @@ whitespaces are deleted."
   "Keywords of AppleScript. Each element has the form (TYPE . KEYWORDS).")
 
 
-(defun as-keywords (&optional type)
+(defun apples-keywords (&optional type)
   "Return keywords of TYPE. If it is omitted, return all keywords."
   (if type
-      (cdr (assq type as-keywords))
-    (apply 'append (mapcar 'cdr as-keywords))))
+      (cdr (assq type apples-keywords))
+    (apply 'append (mapcar 'cdr apples-keywords))))
 
-(defvar as-font-lock-keywords
-  (let ((i as-identifier))
+(defvar apples-font-lock-keywords
+  (let ((i apples-identifier))
     (flet ((kws (type-or-types)
                 (replace-regexp-in-string
                  " " "\\\\s-+"
-                 (regexp-opt (as-keywords type-or-types) 'words)))
-           (cat (&rest s) (as-replace-re-comma->spaces (apply 'concat s))))
+                 (regexp-opt (apples-keywords type-or-types) 'words)))
+           (cat (&rest s) (apples-replace-re-comma->spaces (apply 'concat s))))
       `(
-        ("\\<error\\>"                     0 'as-error                    )
+        ("\\<error\\>"                     0 'apples-error                )
         (,(cat "\\<on,\\(" i "\\)")        1 font-lock-function-name-face )
         (,(cat "^to,\\(" i "\\)")          1 font-lock-function-name-face )
         (,(cat "\\<set,\\(" i "\\),to\\>") 1 font-lock-variable-name-face )
-        (,(as-continuation-char)           0 'as-continuation-char        )
-        (,(kws 'standard-folders)          1 'as-standard-folders         )
-        (,(kws 'statements)                1 'as-statements               )
-        (,(kws 'commands)                  1 'as-commands                 )
-        (,(kws 'operators)                 1 'as-operators                )
-        (,(cat "\\(,[-&*+/<=>^],\\|,<=,\\|,>=,\\)")
-         0 'as-operators                )
-        (,(cat "\\<" i ":")                0 'as-records                  )
-        (,(kws 'handler-parameter-labels)  1 'as-labels                   )
-        (,(kws 'reserved-words)            1 'as-reserved-words           )
+        (,(apples-continuation-char)       0 'apples-continuation-char    )
+        (,(kws 'standard-folders)          1 'apples-standard-folders     )
+        (,(kws 'statements)                1 'apples-statements           )
+        (,(kws 'commands)                  1 'apples-commands             )
+        (,(kws 'operators)                 1 'apples-operators            )
+        (,(cat "\\(,[-&*+/<=>^],\\|,<=,\\|,>=,\\)"                        )
+         0 'apples-operators            )
+        (,(cat "\\<" i ":")                0 'apples-records              )
+        (,(kws 'handler-parameter-labels)  1 'apples-labels               )
+        (,(kws 'reserved-words)            1 'apples-reserved-words       )
         )))
-  "Font lock keywords for `as-mode'.
+  "Font lock keywords for `apples-mode'.
 See also `font-lock-defaults' and `font-lock-keywords'.")
 
 
 ;;; Misc
 
-(defvar as-mode-map
+(defvar apples-mode-map
   (let ((map (make-sparse-keymap)))
     ;; Define menu.
     (easy-menu-define nil map
-      "Menu for `as-mode'."
+      "Menu for `apples-mode'."
       `("AppleScript"
-        ["Open Scratch" as-open-scratch]
-        ["Open Dictionary..." as-open-dict-index]
+        ["Open Scratch" apples-open-scratch]
+        ["Open Dictionary..." apples-open-dict-index]
         ("Edit" :visible (not buffer-read-only)
-         ["(Un)comment Region" as-comment-or-uncomment-region]
-         ["Comment Dwim" as-comment-dwim]
-         ["Insert Continuation Char" as-insert-continuation-char]
+         ["(Un)comment Region" apples-comment-or-uncomment-region]
+         ["Comment Dwim" apples-comment-dwim]
+         ["Insert Continuation Char" apples-insert-continuation-char]
          ["Insert Continuation Char and Newline"
-          as-insert-continuation-char-and-newline]
+          apples-insert-continuation-char-and-newline]
          )
         ("Execution"
-         ["Run File" as-run-file]
-         ["Run Buffer" as-run-buffer]
-         ["Run Region" as-run-region]
-         ["Run from Minibuffer" as-run-minibuf]
-         ["Run Region or Buffer" as-run-region/buffer]
-         ;; ["Send Region or Buffer to ASE" as-send-to-applescript-editor]
+         ["Run File" apples-run-file]
+         ["Run Buffer" apples-run-buffer]
+         ["Run Region" apples-run-region]
+         ["Run from Minibuffer" apples-run-minibuf]
+         ["Run Region or Buffer" apples-run-region/buffer]
+         ;; ["Send Region or Buffer to ASE" apples-send-to-applescript-editor]
          "---"
-         ["Compile" as-compile]
-         ["Decompile" as-decompile]
+         ["Compile" apples-compile]
+         ["Decompile" apples-decompile]
          "---"
-         ["Last Result" as-show-last-result]
-         ["Last Raw Result" as-show-last-raw-result]
+         ["Last Result" apples-show-last-result]
+         ["Last Raw Result" apples-show-last-raw-result]
          )
         ("Misc"
          ("Key <=> Key Code"
-          ["Key => Key Code" as-lookup-key->key-code]
-          ["Key Code => Key" as-lookup-key-code->key])
+          ["Key => Key Code" apples-lookup-key->key-code]
+          ["Key Code => Key" apples-lookup-key-code->key])
          ("path to..."
-          ,@(loop for folder in (nreverse (as-keywords 'standard-folders))
+          ,@(loop for folder in (nreverse (apples-keywords 'standard-folders))
                   collect (multiple-value-bind (path posix)
                               (with-temp-buffer
                                 (insert folder)
@@ -1111,7 +1115,8 @@ See also `font-lock-defaults' and `font-lock-keywords'.")
                                           (get-text-property pos 'posix))))
                             `(,(capitalize folder)
                               [,folder
-                               (insert ,folder) (not buffer-read-only)]
+                               (insert ,folder)
+                               (not buffer-read-only)]
                               [,(concat "PATH: " path)
                                (prin1 ,path (current-buffer))
                                (not buffer-read-only)]
@@ -1120,24 +1125,24 @@ See also `font-lock-defaults' and `font-lock-keywords'.")
                                (not buffer-read-only)]))))
          )
         "---"
-        ["Customizations" as-customize-group]
-        ["Mode Version" as-show-mode-version]
-        ["AppleScript Version" as-show-applescript-version]
-        ["Visit as-mode Project" as-visit-project]
+        ["Customizations" apples-customize-group]
+        ["Mode Version" apples-show-mode-version]
+        ["AppleScript Version" apples-show-applescript-version]
+        ["Visit apples-mode Project" apples-visit-project]
         ))
     map)
-  "Keymap used in `as-mode'.")
+  "Keymap used in `apples-mode'.")
 
-(defun as-keymap-setup ()
-  "Set up keybindings for `as-mode' according to `as-keymap'."
-  (when (and as-keymap
-             (not (as-plist-get :keybinded?)))
-    (loop for (key . cmd) in as-keymap
-          do (define-key as-mode-map (read-kbd-macro key) cmd)
-          finally (as-plist-put :keybinded? t))))
+(defun apples-keymap-setup ()
+  "Set up keybindings for `apples-mode' according to `apples-keymap'."
+  (when (and apples-keymap
+             (not (apples-plist-get :keybinded?)))
+    (loop for (key . cmd) in apples-keymap
+          do (define-key apples-mode-map (read-kbd-macro key) cmd)
+          finally (apples-plist-put :keybinded? t))))
 
 ;; TODO: Syntax table is still rough.
-(defvar as-mode-syntax-table
+(defvar apples-mode-syntax-table
   (let ((st (make-syntax-table))
         (lst
          '((?\" "\"")
@@ -1157,32 +1162,32 @@ See also `font-lock-defaults' and `font-lock-keywords'.")
     (loop for (char entry) in lst
           do (modify-syntax-entry char entry st))
     st)
-  "Syntax table used in `as-mode'.")
+  "Syntax table used in `apples-mode'.")
 
-(defun as-applescript-version ()
+(defun apples-applescript-version ()
   "Return AppleScript's version."
-  (unless (as-plist-get :AS-version)
+  (unless (apples-plist-get :AS-version)
     (let ((ver (with-temp-buffer
                  (when (= (call-process "osascript" nil (current-buffer) t
                                         "-e" "AppleScript's version")
                           0)
-                   (as-buffer-string)))))
-      (as-plist-put :AS-version ver)
+                   (apples-buffer-string)))))
+      (apples-plist-put :AS-version ver)
       ver)))
-(as-define-show-func applescript-version (as-plist-get :AS-version))
+(apples-define-show-func applescript-version (apples-plist-get :AS-version))
 
-(defun as-customize-group ()
+(defun apples-customize-group ()
   (interactive)
   (customize-group "as"))
 
-(defun as-visit-project ()
+(defun apples-visit-project ()
   (interactive)
-  (browse-url "http://github.com/tequilasunset/as-mode"))
+  (browse-url "http://github.com/tequilasunset/apples-mode"))
 
-(defvar as-imenu-generic-expression
+(defvar apples-imenu-generic-expression
   (nreverse
-   (let ((i as-identifier))
-     (flet ((cat (&rest s) (as-replace-re-comma->spaces (apply 'concat s)))
+   (let ((i apples-identifier))
+     (flet ((cat (&rest s) (apples-replace-re-comma->spaces (apply 'concat s)))
             (ptn (title &rest re) (list title (apply 'cat "^\\s-*" re) 1)))
        (list
         (ptn "Handlers"     "\\(?:on\\|to\\),\\(" i "\\)"      )
@@ -1195,37 +1200,37 @@ See also `font-lock-defaults' and `font-lock-keywords'.")
 ;;; Major mode
 
 ;;;###autoload
-(defun as-mode ()
+(defun apples-mode ()
   "Happy AppleScripting!"
   (interactive)
   (kill-all-local-variables)
-  (as-tmp-files-setup)
-  (as-error-overlay-setup)
+  (apples-tmp-files-setup)
+  (apples-error-overlay-setup)
   ;; map and table
-  (as-keymap-setup)
-  (use-local-map as-mode-map)
-  (set-syntax-table as-mode-syntax-table)
-  (when as-underline-syntax-class
-    (modify-syntax-entry ?_ as-underline-syntax-class as-mode-syntax-table))
+  (apples-keymap-setup)
+  (use-local-map apples-mode-map)
+  (set-syntax-table apples-mode-syntax-table)
+  (when apples-underline-syntax-class
+    (modify-syntax-entry ?_ apples-underline-syntax-class apples-mode-syntax-table))
   ;; local variables
-  (setq major-mode 'as-mode
+  (setq major-mode 'apples-mode
         mode-name "AppleScript"
-        font-lock-defaults '(as-font-lock-keywords)
+        font-lock-defaults '(apples-font-lock-keywords)
         paragraph-separate "[ \t\n\f]*$"
         paragraph-start    "[ \t\n\f]*$"
         comment-start "-- "
         comment-end   ""
         comment-start-skip "\\(?:---\\|(\\*\\)+[ \t]*"
         comment-column 40
-        indent-line-function 'as-indent-line
-        imenu-generic-expression as-imenu-generic-expression
+        indent-line-function 'apples-indent-line
+        imenu-generic-expression apples-imenu-generic-expression
         )
   ;; AppleScript above v2.0 supports # comment.
-  (let ((ver (as-applescript-version)))
+  (let ((ver (apples-applescript-version)))
     (when (and ver (>= (string-to-number ver) 2.0))
-      (modify-syntax-entry ?# "<" as-mode-syntax-table)
+      (modify-syntax-entry ?# "<" apples-mode-syntax-table)
       (setq comment-start-skip "\\(?:#\\|---\\|(\\*\\)+[ \t]*")))
-  (run-hooks 'as-mode-hook))
+  (run-hooks 'apples-mode-hook))
 
-(provide 'as-mode)
-;;; as-mode.el ends here
+(provide 'apples-mode)
+;;; apples-mode.el ends here
