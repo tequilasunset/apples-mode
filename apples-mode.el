@@ -325,7 +325,7 @@ If PRED is omitted or returns nil, delete stored info."
                                    (cons (or ,beg 1) (or ,buf (current-buffer)))
                                  (cons nil nil))))
 
-(defun apples-delete-error-overlay ()
+(defun apples-delete-error-overlay (&rest _)
   (let ((ov (apples-plist-get :err-ov)))
     (when (overlayp ov)
       (delete-overlay ov))))
@@ -337,7 +337,7 @@ If PRED is omitted or returns nil, delete stored info."
       (setq ov (make-overlay 1 1))
       (overlay-put ov 'face 'apples-error-highlight)
       (apples-plist-put :err-ov ov)))
-  (add-hook 'post-command-hook 'apples-delete-error-overlay nil t))
+  (add-hook 'after-change-functions 'apples-delete-error-overlay nil t))
 
 ;; FIXME: This workaround is not a perfect. Sometimes get the error like the
 ;; followings.
@@ -1045,10 +1045,10 @@ whitespaces are deleted."
 
 (defvar apples-font-lock-keywords
   (let ((i apples-identifier))
-    (flet ((kws (type-or-types)
+    (flet ((kws (type)
                 (replace-regexp-in-string
                  " " "\\\\s-+"
-                 (regexp-opt (apples-keywords type-or-types) 'words)))
+                 (regexp-opt (apples-keywords type) 'words)))
            (cat (&rest s) (apples-replace-re-comma->spaces (apply 'concat s))))
       `(
         ("\\<error\\>"                     0 'apples-error                )
@@ -1178,7 +1178,7 @@ See also `font-lock-defaults' and `font-lock-keywords'.")
 
 (defun apples-customize-group ()
   (interactive)
-  (customize-group "as"))
+  (customize-group "apples"))
 
 (defun apples-visit-project ()
   (interactive)
@@ -1230,7 +1230,7 @@ See also `font-lock-defaults' and `font-lock-keywords'.")
     (when (and ver (>= (string-to-number ver) 2.0))
       (modify-syntax-entry ?# "<" apples-mode-syntax-table)
       (setq comment-start-skip "\\(?:#\\|---\\|(\\*\\)+[ \t]*")))
-  (run-hooks 'apples-mode-hook))
+  (run-mode-hooks 'apples-mode-hook))
 
 (provide 'apples-mode)
 ;;; apples-mode.el ends here
