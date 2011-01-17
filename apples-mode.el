@@ -295,7 +295,7 @@ If nil, treated as a symbol."
 (macrolet ((face (name &rest attrs)
                  `(defface ,(intern (format "apples-%s" name))
                     '((t (,@attrs)))
-                    ,(subst-char-in-string ?- ? (format "Face for %s." name))
+                    ,(subst-char-in-string ?- ?  (format "Face for %s." name))
                     :group 'apples)))
   (face statements :inherit font-lock-keyword-face)
   (face commands :inherit font-lock-keyword-face :italic t)
@@ -346,15 +346,15 @@ If PRED is omitted or returns nil, delete stored info."
 ;;    A property can’t go after this “\"”.
 ;;
 ;; The cause of them may be the coding of temp file.
-(apples-define-tmp-file 1713)
-(defun apples-error-1713-workaround (f/s)
+(apples-define-tmp-file -1713)
+(defun apples-error--1713-workaround (f/s)
   "Avoid AppleScript's error -1713.\n
    execution error: No user interaction allowed. (-1713)"
   ;; Ref: <http://macscripter.net/viewtopic.php?id=26334>
   (unless (file-exists-p f/s)
-    (with-temp-file apples-tmp-1713
+    (with-temp-file apples-tmp--1713
       (insert f/s))
-    (setq f/s apples-tmp-1713))
+    (setq f/s apples-tmp--1713))
   (apples-do-applescript
    (format
     "tell application \"AppleScript Runner\" to do script \"%s\"" f/s)))
@@ -365,7 +365,7 @@ If PRED is omitted or returns nil, delete stored info."
               &aux err-beg err-end err-type err-msg err-num unknown)
       (values (apples-plist-get :err-ov) (apples-plist-get :run-info))
     (if (string-match
-         "\\([0-9]+\\):\\([0-9]+\\): \\([^:]+:\\) \\(.+\\) (\\(-[0-9]+\\))$"
+         "\\([0-9]+\\):\\([0-9]+\\): \\([^:]+:\\) \\(.+\\) (\\(-?[0-9]+\\))$"
          result)
         (progn
           (setq err-beg (string-to-number (match-string 1 result))
@@ -401,7 +401,7 @@ also highlight the error region and go to the beginning of it if
                   (apples-parse-error result)
                 ;; -1713
                 (when (eq num -1713)
-                  (return-from nil (apples-error-1713-workaround f/s)))
+                  (return-from nil (apples-error--1713-workaround f/s)))
                 (when (and beg buf)
                   ;; highlight and move
                   (when apples-follow-error-position
@@ -631,7 +631,7 @@ To specify the default query, set `apples-decompile-query'."
   (interactive "^")
   (when (re-search-backward "\\s-+\\=" nil t)
     (delete-region (match-beginning 0) (match-end 0)))
-  (insert ? apples-continuation-char))
+  (insert ?  apples-continuation-char))
 
 (defun apples-insert-continuation-char-and-newline ()
   "Insert the continuation character, then add newline."
@@ -724,14 +724,27 @@ To specify the default query, set `apples-decompile-query'."
     (nth 3 (syntax-ppss pos))))
 
 (defsubst apples-ideal-prev-bol ()
-  "Return the point of previous bol or nil. Empty lines, lines filled by
-whitespaces and lines whose bol is in string or in comment are skipped."
+  "Return the point of previous bol or nil. Lines like the followings
+are skipped.\n
+- Empty lines
+- Lines filled by whitespaces
+- Lines whose bol is in string or in comment
+- Comments"
   (save-excursion
     (loop initially (beginning-of-line)
           while (not (bobp))
           do (forward-line -1)
           unless (or (looking-at "\\s-*$")
-                     (apples-in-string/comment-p))
+                     (apples-in-string/comment-p)
+                     (let ((face-prop (save-excursion
+                                        (skip-chars-forward " \t")
+                                        (get-text-property (point) 'face))))
+                       (some (lambda (face)
+                               (if (listp face-prop)
+                                   (memq face face-prop)
+                                 (eq face face-prop)))
+                             '(font-lock-comment-face
+                               font-lock-comment-delimiter-face))))
           return (point))))
 
 (defsubst apples-leading-word-of-line ()
@@ -762,7 +775,8 @@ whitespaces are deleted."
 
 (defun apples-parse-lines ()
   "Parse current and previous lines then return the values."
-  (let ((prev-bol (apples-ideal-prev-bol))
+  (let ((prev-bol (unless (= (point-at-bol) (point-min))
+                    (apples-ideal-prev-bol)))
         (cchar-re (concat (apples-continuation-char) "\\s-*$"))
         prev-indent prev-lword prev-lstr pprev-bol prev-cchar-p pprev-cchar-p)
     (flet ((cchar? (lstr) (string-match cchar-re lstr)))
@@ -819,8 +833,8 @@ whitespaces are deleted."
                                      (- prev-indent apples-continuation-offset))
                                     ;; same as prev
                                     (prev-indent)
-                                    ;; noindent
-                                    (t cur-indent))
+                                    ;; no prev
+                                    (0))
                               (if cur-deindenter?
                                   ;; deindent
                                   apples-indent-offset
@@ -836,16 +850,20 @@ whitespaces are deleted."
   (interactive "^")
   (unless (apples-in-string-p (point-at-bol))
     (multiple-value-bind
-        (cur-col cur-indent _1 _2 prev-indent _3 _4 prev-cchar-p pprev-cchar-p)
+        (cur-col cur-indent _1 prev? prev-indent _2 _3 prev-cchar-p pprev-cchar-p)
         (apples-parse-lines)
       (let* ((pos (point))
-             (diff (- prev-indent cur-indent))
              (offset (if (or prev-cchar-p pprev-cchar-p)
                          apples-continuation-offset
                        apples-indent-offset))
-             (indent (cond ((> diff 0) prev-indent)
-                           ((= diff 0) (+ prev-indent offset))
-                           (t (- prev-indent offset)))))
+             (indent (cond (prev?
+                            (let ((diff (- prev-indent cur-indent)))
+                              (cond ((> diff 0) prev-indent)
+                                    ((= diff 0) (+ prev-indent offset))
+                                    (t (- prev-indent offset)))))
+                           ;; no prev
+                           ((= cur-indent 0) offset)
+                           (0))))
         ;; Now indent line.
         (indent-line-to (if (natnump indent) indent 0))
         (when (> (- cur-col cur-indent) 0)
@@ -1051,20 +1069,20 @@ whitespaces are deleted."
                  (regexp-opt (apples-keywords type) 'words)))
            (cat (&rest s) (apples-replace-re-comma->spaces (apply 'concat s))))
       `(
-        ("\\<error\\>"                     0 'apples-error                )
-        (,(cat "\\<on,\\(" i "\\)")        1 font-lock-function-name-face )
-        (,(cat "^to,\\(" i "\\)")          1 font-lock-function-name-face )
-        (,(cat "\\<set,\\(" i "\\),to\\>") 1 font-lock-variable-name-face )
-        (,(apples-continuation-char)       0 'apples-continuation-char    )
-        (,(kws 'standard-folders)          1 'apples-standard-folders     )
-        (,(kws 'statements)                1 'apples-statements           )
-        (,(kws 'commands)                  1 'apples-commands             )
-        (,(kws 'operators)                 1 'apples-operators            )
-        (,(cat "\\(,[-&*+/<=>^],\\|,<=,\\|,>=,\\)"                        )
-         0 'apples-operators            )
-        (,(cat "\\<" i ":")                0 'apples-records              )
-        (,(kws 'handler-parameter-labels)  1 'apples-labels               )
-        (,(kws 'reserved-words)            1 'apples-reserved-words       )
+        ("\\<error\\>"                          0 'apples-error                )
+        (,(cat "\\<on,\\(" i "\\)")             1 font-lock-function-name-face )
+        (,(cat "^to,\\(" i "\\)")               1 font-lock-function-name-face )
+        (,(cat "\\<set,\\(" i "\\),to\\>")      1 font-lock-variable-name-face )
+        (,(apples-continuation-char)            0 'apples-continuation-char    )
+        (,(kws 'standard-folders)               1 'apples-standard-folders     )
+        (,(kws 'statements)                     1 'apples-statements           )
+        (,(kws 'commands)                       1 'apples-commands             )
+        (,(kws 'operators)                      1 'apples-operators            )
+        (,(cat ",\\([-&*+/<=>^]\\|<=\\|>=\\),") 0 'apples-operators            )
+        (,(cat "\\<" i ":")                     0 'apples-records              )
+        (,(kws 'handler-parameter-labels)       1 'apples-labels               )
+        (,(kws 'reserved-words)                 1 'apples-reserved-words       )
+        ("\\('s\\)\\s-+"                        1 'apples-reserved-words       )
         )))
   "Font lock keywords for `apples-mode'.
 See also `font-lock-defaults' and `font-lock-keywords'.")
