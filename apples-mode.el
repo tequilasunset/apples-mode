@@ -4,7 +4,7 @@
 
 ;; Author: tequilasunset <tequilasunset.mac@gmail.com>
 ;; Keywords: AppleScript, languages
-(defconst apples-mode-version "0.0.1"
+(defconst apples-mode-version "0.0.2"
   "The Current version of `apples-mode'.")
 
 ;; This program is free software: you can redistribute it and/or modify
@@ -70,20 +70,21 @@
 ;;      (add-to-list 'ac-modes 'apples-mode)
 ;;      (add-hook 'apples-mode-hook
 ;;                (lambda ()
-;;                  (add-to-list 'ac-sources 'ac-source-applescript)))))
+;;                  (add-to-list 'ac-sources 'ac-source-applescript t)))))
 
 ;;; Tested:
 
 ;; GNU Emacs 23.2.1 on Mac OS X 10.6.6
+;; AppleScript 2.1.2
 
 ;;; Known Bugs:
 
-;; In some cases, AppleScript's `display' command doesn't work correctly.
 
 ;;; TODO:
 
-;; Syntax table
 ;; Open region or buffer's contents in AppleScript Editor and execute it.
+;; Result History (like `Event Log History')
+;; `end' completion
 
 ;;; Code:
 
@@ -167,6 +168,12 @@ where error has occurred."
 (defcustom apples-prefer-coding-system nil
   "Specify the coding-system used for the execution of script."
   :type '(choice symbol (const nil))
+  :group 'apples)
+
+(defcustom apples-compile-create-file-flag nil
+  "If non-nil, create an output file of compilation without confirmations
+if it doesn't exist."
+  :type 'boolean
   :group 'apples)
 
 (defcustom apples-decompile-callback 'apples-handle-decompile
@@ -318,17 +325,12 @@ If nil, treated as a symbol."
 (apples-define-show-func last-raw-result (apples-plist-get :last-raw-result))
 
 (defmacro apples-set-run-info (&optional pred beg buf)
-  "If passed PRED, record BEG (or 1) and BUF (or current buffer).
-If PRED is omitted or returns nil, delete stored info."
+  "If PRED returns non-nil, record BEG (or 1) and BUF (or current buffer).
+Otherwise delete stored info."
   (declare (indent 0))
   `(apples-plist-put :run-info (if ,pred
                                    (cons (or ,beg 1) (or ,buf (current-buffer)))
                                  (cons nil nil))))
-
-(defun apples-delete-error-overlay (&rest _)
-  (let ((ov (apples-plist-get :err-ov)))
-    (when (overlayp ov)
-      (delete-overlay ov))))
 
 (defun apples-error-overlay-setup ()
   (let ((ov (apples-plist-get :err-ov)))
@@ -336,16 +338,31 @@ If PRED is omitted or returns nil, delete stored info."
         (move-overlay ov 1 1)
       (setq ov (make-overlay 1 1))
       (overlay-put ov 'face 'apples-error-highlight)
-      (apples-plist-put :err-ov ov)))
-  (add-hook 'after-change-functions 'apples-delete-error-overlay nil t))
+      (apples-plist-put :err-ov ov))))
 
-;; FIXME: This workaround is not a perfect. Sometimes get the error like the
-;; followings.
-;;
-;;    A identifier can't go after this “"”.
-;;    A property can’t go after this “\"”.
-;;
-;; The cause of them may be the coding of temp file.
+(defun apples-delete-result (&rest _)
+  ;; delete error ov
+  (let ((ov (apples-plist-get :err-ov)))
+    (when (overlayp ov)
+      (delete-overlay ov)))
+  ;; remove hooks
+  (remove-hook 'pre-command-hook 'apples-display-result t)
+  (remove-hook 'after-change-functions 'apples-delete-result t))
+
+(defun apples-display-result (&optional result)
+  (let (message-log-max)
+    (message (cond
+              ;; first time
+              (result
+               (add-hook 'pre-command-hook 'apples-display-result nil t)
+               (add-hook 'after-change-functions 'apples-delete-result nil t)
+               (apples-plist-put :last-result result))
+              ;; called from hook
+              ((and (eq major-mode 'apples-mode)
+                    (eq (cdr (apples-plist-get :run-info))
+                        (current-buffer)))
+               (apples-plist-get :last-result))))))
+
 (apples-define-tmp-file -1713)
 (defun apples-error--1713-workaround (f/s)
   "Avoid AppleScript's error -1713.\n
@@ -394,32 +411,35 @@ also highlight the error region and go to the beginning of it if
 `apples-follow-error-position' is non-nil."
   (block nil
     (apples-plist-put :last-raw-result result)
-    (setq result
-          (if (= status 1)
-              ;; error
-              (multiple-value-bind (unknown beg end type msg num buf ov)
-                  (apples-parse-error result)
-                ;; -1713
-                (when (eq num -1713)
-                  (return-from nil (apples-error--1713-workaround f/s)))
-                (when (and beg buf)
-                  ;; highlight and move
-                  (when apples-follow-error-position
-                    (switch-to-buffer buf)
-                    (goto-char beg)
-                    (deactivate-mark))
-                  (move-overlay ov beg end buf))
-                ;; res
-                (if unknown
-                    result
-                  (concat (propertize (concat type " ")
-                                      'face 'apples-error-prompt)
-                          msg)))
-            ;; no error
-            (concat (propertize "Result: " 'face 'apples-result-prompt)
-                    result)))
-    (apples-set-run-info)
-    (message (apples-plist-put :last-result result))))
+    (apples-display-result
+     (if (= status 1)
+         ;; error
+         (multiple-value-bind (unknown beg end type msg num buf ov)
+             (apples-parse-error result)
+           ;; -1713
+           (when (eq num -1713)
+             (return-from nil (apples-error--1713-workaround f/s)))
+           (when (and beg buf)
+             ;; highlight and move
+             (when apples-follow-error-position
+               (switch-to-buffer buf)
+               (goto-char beg)
+               (deactivate-mark))
+             (move-overlay ov beg end buf))
+           ;; res
+           (if unknown
+               result
+             (format "%s%s [%s]"
+                     (propertize (concat type " ") 'face 'apples-error-prompt)
+                     msg
+                     (propertize (int-to-string num)
+                                 'face 'apples-error-prompt))))
+       ;; no error
+       (concat (propertize "Result: " 'face 'apples-result-prompt)
+               (replace-regexp-in-string
+                "\\\\\"" "\"" (if (string-match "^\"\\(.*\\)\"$" result)
+                                  (match-string-no-properties 1 result)
+                                result)))))))
 
 (defsubst apples-proc-live-p (proc)
   "Return non-nil if PROC is still running."
@@ -464,11 +484,11 @@ If CALLBACK is omitted, call `apples-result'."
                  (buf (get-buffer-create " *apples-do-applescript*"))
                  (args (if (file-exists-p f/s)
                            `(,f/s)
-                         `("-e" ,(apples-encode-string f/s))))
+                         `("-ss" "-e" ,(apples-encode-string f/s))))
                  (old-proc (get-buffer-process buf))
                  (enable (if (apples-proc-live-p old-proc)
                              (when (y-or-n-p "\
-apples-do-applescript: Process is still running; kill it? ")
+apples: Process is still running; kill it? ")
                                (progn
                                  (kill-process old-proc)
                                  t))
@@ -483,18 +503,37 @@ apples-do-applescript: Process is still running; kill it? ")
                   f/s))))))
 
 ;; Compile
-(defun apples-compile (filename)
-  "Compile FILENAME."
-  (interactive
-   (list (read-file-name "File: " buffer-file-name buffer-file-name)))
-  (lexical-let* ((filename (expand-file-name filename))
-                 (msg (message "Compiling...")))
-    (set-process-sentinel
-     (start-process "apples-compile" nil "osacompile" filename)
-     (lambda (proc _)
-       (if (apples-proc-failed-p proc)
-           (message "%smissed" msg)
-         (message "%sdone" msg))))))
+(defun apples-compile (&optional filename output)
+  "Compile FILENAME into OUTPUT."
+  (interactive)
+  (labels ((read (file prompt default)
+                 (expand-file-name
+                  (or file (read-file-name prompt default default))))
+           (make (file)
+                 (if (file-exists-p file)
+                     file
+                   (when (or apples-compile-create-file-flag
+                             (y-or-n-p
+                              (format "apples: %s doesn't exist; make it? "
+                                      file)))
+                     (let ((dir (file-name-directory file)))
+                       (unless (file-directory-p dir)
+                         (mkdir dir t))
+                       (with-temp-file file))
+                     file))))
+    (lexical-let* ((filename (read filename "File: " buffer-file-name))
+                   (output (make (read output "Output: " filename)))
+                   (buf (get-buffer-create " *apples-compile*"))
+                   (args `("-o" ,output ,filename))
+                   msg)
+      (when (every 'file-exists-p `(,filename ,output))
+        (setq msg (message "Compiling..."))
+        (set-process-sentinel
+         (apply 'start-process "apples-compile" buf "osacompile" args)
+         (lambda (proc _)
+           (if (apples-proc-failed-p proc)
+               (apples-proc-failed msg buf)
+             (message "%sdone" msg))))))))
 
 ;; Decompile
 (defun apples-handle-decompile (script filename)
@@ -508,8 +547,14 @@ To specify the default query, set `apples-decompile-query'."
                  (format "%s%sverwrite file %snsert script %sopy script"
                          (propertize "Select: " 'face 'apples-result-prompt)
                          (prop "o") (prop "i") (prop "c"))))))
-    (?o (with-temp-file filename
-          (insert script)))
+    (?o (let ((buf (get-file-buffer filename)))
+          (if buf
+              (with-current-buffer buf
+                (erase-buffer)
+                (insert script))
+            (with-temp-file filename
+              (erase-buffer)
+              (insert script)))))
     (?i (insert script))
     (?c (with-temp-buffer
           (insert script)
@@ -534,7 +579,7 @@ To specify the default query, set `apples-decompile-query'."
                     (apples-buffer-string buf)
                     filename)))))))
 
-;; FIXME: I don't know the way of reverting...
+;; TODO: Sorry, this feature is coming soon.
 ;; ;; Send script to AppleScript Editor
 ;; (defun apples-open (&rest args)
 ;;   "Run command `open' with ARGS (sync)."
@@ -604,6 +649,7 @@ To specify the default query, set `apples-decompile-query'."
 (defun apples-run-minibuf (script)
   "Read script from minibuffer and execute it as AppleScript."
   (interactive "sScript: ")
+  (apples-set-run-info nil)
   (apples-do-applescript script))
 
 ;; Open Dictionary index
@@ -784,8 +830,10 @@ whitespaces are deleted."
         (save-excursion
           (goto-char prev-bol)
           (setq prev-indent (current-indentation)
-                prev-lword (apples-leading-word-of-line)
                 prev-lstr (apples-line-string)
+                prev-lword (when (string-match (concat "^" apples-identifier)
+                                               prev-lstr)
+                             (match-string-no-properties 0 prev-lstr))
                 prev-cchar-p (cchar? prev-lstr))
           ;; Parse previous line again for continuation char.
           (when (setq pprev-bol (apples-ideal-prev-bol))
@@ -1002,7 +1050,7 @@ whitespaces are deleted."
                   "/Users/username/Pictures/")
                  ("preferences"
                   "Macintosh HD:Users:username:Library:Preferences:"
-                  "/Users//username/Library/Preferences/")
+                  "/Users/username/Library/Preferences/")
                  ("printer descriptions"
                   "Macintosh HD:System:Library:Printers:PPDs:"
                   "/System/Library/Printers/PPDs/")
@@ -1070,8 +1118,8 @@ whitespaces are deleted."
            (cat (&rest s) (apples-replace-re-comma->spaces (apply 'concat s))))
       `(
         ("\\<error\\>"                          0 'apples-error                )
-        (,(cat "\\<on,\\(" i "\\)")             1 font-lock-function-name-face )
-        (,(cat "^to,\\(" i "\\)")               1 font-lock-function-name-face )
+        (,(cat "^\\s-*\\(?:on\\|to\\),\\(" i "\\)")
+         1 font-lock-function-name-face )
         (,(cat "\\<set,\\(" i "\\),to\\>")      1 font-lock-variable-name-face )
         (,(apples-continuation-char)            0 'apples-continuation-char    )
         (,(kws 'standard-folders)               1 'apples-standard-folders     )
@@ -1159,7 +1207,6 @@ See also `font-lock-defaults' and `font-lock-keywords'.")
           do (define-key apples-mode-map (read-kbd-macro key) cmd)
           finally (apples-plist-put :keybinded? t))))
 
-;; TODO: Syntax table is still rough.
 (defvar apples-mode-syntax-table
   (let ((st (make-syntax-table))
         (lst
@@ -1167,6 +1214,7 @@ See also `font-lock-defaults' and `font-lock-keywords'.")
            (?\\ "\\")
            (?:  "_")
            (?_  "_")
+           (?#  "<")
            (?-  ". 12")
            (?\t "    ")
            (?\f "    ")
@@ -1208,6 +1256,7 @@ See also `font-lock-defaults' and `font-lock-keywords'.")
      (flet ((cat (&rest s) (apples-replace-re-comma->spaces (apply 'concat s)))
             (ptn (title &rest re) (list title (apply 'cat "^\\s-*" re) 1)))
        (list
+        ;; TODO: These patterns are still rough.
         (ptn "Handlers"     "\\(?:on\\|to\\),\\(" i "\\)"      )
         (ptn "Applications" "tell,application,\"\\(" i "\\)\"" )
         (ptn "Variables"    "set,\\(.+\\),to"                  )
@@ -1238,16 +1287,11 @@ See also `font-lock-defaults' and `font-lock-keywords'.")
         paragraph-start    "[ \t\n\f]*$"
         comment-start "-- "
         comment-end   ""
-        comment-start-skip "\\(?:---\\|(\\*\\)+[ \t]*"
+        comment-start-skip "\\(?:#\\|---*\\|(\\*\\)+[ \t]*"
         comment-column 40
         indent-line-function 'apples-indent-line
         imenu-generic-expression apples-imenu-generic-expression
         )
-  ;; AppleScript above v2.0 supports # comment.
-  (let ((ver (apples-applescript-version)))
-    (when (and ver (>= (string-to-number ver) 2.0))
-      (modify-syntax-entry ?# "<" apples-mode-syntax-table)
-      (setq comment-start-skip "\\(?:#\\|---\\|(\\*\\)+[ \t]*")))
   (run-mode-hooks 'apples-mode-hook))
 
 (provide 'apples-mode)
