@@ -62,8 +62,6 @@
 
 ;;; TODO:
 
-;; Result History (like `Event Log History')
-;; Improve imenu
 
 ;;; Code:
 
@@ -325,9 +323,11 @@ nothing (nil). See also `apples-end-completion-hl-duration'."
   "If PRED returns non-nil, record BEG (or 1) and BUF (or current buffer).
 Otherwise delete stored info."
   (declare (indent 0))
-  `(apples-plist-put :run-info (if ,pred
-                                   (cons (or ,beg 1) (or ,buf (current-buffer)))
-                                 (cons nil nil))))
+  `(progn
+     (apples-delete-result)             ; Delete last display
+     (apples-plist-put :run-info (if ,pred
+                                     (cons (or ,beg 1) (or ,buf (current-buffer)))
+                                   (cons nil nil)))))
 
 (defun apples-delete-overlay (ov)
   (if (consp ov)
@@ -417,7 +417,7 @@ also highlight the error region and go to the beginning of it if
              (apples-parse-error result)
            ;; -1713
            (when (eq num -1713)
-             (return-from nil (apples-error--1713-workaround f/s)))
+             (return (apples-error--1713-workaround f/s)))
            (when (and beg buf)
              ;; highlight and move
              (when apples-follow-error-position
@@ -1347,15 +1347,13 @@ See also `font-lock-defaults' and `font-lock-keywords'.")
 
 (defvar apples-imenu-generic-expression
   (nreverse
-   (let ((i apples-identifier))
-     (flet ((cat (&rest s) (apples-replace-re-comma->spaces (apply #'concat s)))
-            (ptn (title &rest re) (list title (apply #'cat "^\\s-*" re) 1)))
-       (list
-        ;; TODO: These patterns are still rough.
-        (ptn "Handlers"     "\\(?:on\\|to\\),\\(" i "\\)"      )
-        (ptn "Applications" "tell,application,\"\\(" i "\\)\"" )
-        (ptn "Variables"    "set,\\(.+\\),to"                  )
-        ))))
+   (flet ((cat (&rest s) (apples-replace-re-comma->spaces (apply #'concat s)))
+          (ptn (title &rest re) (list title (apply #'cat "^\\s-*" re) 1)))
+     (list
+      (ptn "Handlers"     "\\(?:on\\|to\\),\\(.+\\)$" )
+      (ptn "Tells"        "tell,\\(.+\\)$"            )
+      (ptn "Variables"    "set,\\(.+\\),to"           )
+      )))
   "Imenu index pattern for AppleScript. See also `imenu-generic-expression'.")
 
 

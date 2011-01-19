@@ -2,5 +2,7 @@
 # name: try
 # --
 try
+$1
+on error $2
 $0
 end try
