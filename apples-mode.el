@@ -621,8 +621,8 @@ To specify the default query, set `apples-decompile-query'."
   (setq filename (expand-file-name filename))
   (when (file-exists-p filename)
     (apples-set-run-info
-     (eq (get-file-buffer filename)
-         (current-buffer)))
+      (eq (get-file-buffer filename)
+          (current-buffer)))
     (apples-do-applescript filename)))
 
 (defun apples-run-buffer (&optional buffer-or-name)
@@ -630,9 +630,9 @@ To specify the default query, set `apples-decompile-query'."
   (interactive)
   (or buffer-or-name (setq buffer-or-name (current-buffer)))
   (apples-set-run-info
-   (eq (or (get-buffer buffer-or-name)
-           buffer-or-name)
-       (current-buffer)))
+    (eq (or (get-buffer buffer-or-name)
+            buffer-or-name)
+        (current-buffer)))
   (with-current-buffer buffer-or-name
     (apples-do-applescript (buffer-string))))
 
@@ -989,7 +989,7 @@ specified, also highlight the matching statement."
         (apples-end-completion-hl apples-end-completion-hl bol bword eword)))))
 
 (defun apples-end-completion-hl (where bol bword eword)
-  (destructuring-bind ((bov . eov) pos beg)
+  (destructuring-bind ((bov . eov) beg pos)
       (values (apples-plist-get :end-ovs)
               (save-excursion
                 (goto-char bol)
