@@ -411,34 +411,36 @@ also highlight the error region and go to the beginning of it if
   (block nil
     (apples-plist-put :last-raw-result result)
     (apples-display-result
-     (if (= status 1)
-         ;; error
-         (multiple-value-bind (unknown beg end type msg num buf ov)
-             (apples-parse-error result)
-           ;; -1713
-           (when (eq num -1713)
-             (return (apples-error--1713-workaround f/s)))
-           (when (and beg buf)
-             ;; highlight and move
-             (when apples-follow-error-position
-               (switch-to-buffer buf)
-               (goto-char beg)
-               (deactivate-mark))
-             (move-overlay ov beg end buf))
-           ;; res
-           (if unknown
-               result
-             (format "%s%s [%s]"
-                     (propertize (concat type " ") 'face 'apples-error-prompt)
-                     msg
-                     (propertize (int-to-string num)
-                                 'face 'apples-error-prompt))))
-       ;; no error
-       (concat (propertize "Result: " 'face 'apples-result-prompt)
-               (replace-regexp-in-string
-                "\\\\\"" "\"" (if (string-match "^\"\\(.*\\)\"$" result)
-                                  (match-string-no-properties 1 result)
-                                result)))))))
+     (replace-regexp-in-string
+      "%" "%%"                          ; %-sequence => %
+      (if (= status 1)
+          ;; error
+          (multiple-value-bind (unknown beg end type msg num buf ov)
+              (apples-parse-error result)
+            ;; -1713
+            (when (eq num -1713)
+              (return (apples-error--1713-workaround f/s)))
+            (when (and beg buf)
+              ;; highlight and move
+              (when apples-follow-error-position
+                (switch-to-buffer buf)
+                (goto-char beg)
+                (deactivate-mark))
+              (move-overlay ov beg end buf))
+            ;; res
+            (if unknown
+                result
+              (format "%s%s [%s]"
+                      (propertize (concat type " ") 'face 'apples-error-prompt)
+                      msg
+                      (propertize (int-to-string num)
+                                  'face 'apples-error-prompt))))
+        ;; no error
+        (concat (propertize "Result: " 'face 'apples-result-prompt)
+                (replace-regexp-in-string
+                 "\\\\\"" "\"" (if (string-match "^\"\\(.*\\)\"$" result)
+                                   (match-string-no-properties 1 result)
+                                 result))))))))
 
 (defsubst apples-proc-live-p (proc)
   "Return non-nil if PROC is still running."
