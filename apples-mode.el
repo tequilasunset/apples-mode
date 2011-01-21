@@ -210,7 +210,7 @@ See also `apples-indenters', `apples-indent-regexps' and
 
 (defcustom apples-indent-regexps
   (mapcar
-   (lambda (re) (concat "^\\s-*" (apples-replace-re-comma->spaces re)))
+   (lambda (re) (concat "^" (apples-replace-re-comma->spaces re)))
    '(;; script foo
      "script,\\<"
      "using,terms,from"
@@ -225,7 +225,7 @@ See also `apples-deindenters' and `apples-noindent-regexps'."
 
 (defcustom apples-noindent-regexps
   (mapcar
-   (lambda (re) (concat "^\\s-*" (apples-replace-re-comma->spaces re)))
+   (lambda (re) (concat "^" (apples-replace-re-comma->spaces re)))
    '(;; if foo then bar
      "if\\>.+\\<then,\\<"
      ;; tell application "foo" to bar
@@ -507,21 +507,20 @@ apples: Process is still running; kill it? ")
   (interactive)
   (labels ((read (file prompt default)
                  (expand-file-name
-                  (or file (read-file-name prompt default default))))
-           (make (file)
-                 (if (file-exists-p file)
-                     file
-                   (when (or apples-compile-create-file-flag
-                             (y-or-n-p
-                              (format "apples: %s doesn't exist; make it? "
-                                      file)))
-                     (let ((dir (file-name-directory file)))
-                       (unless (file-directory-p dir)
-                         (mkdir dir t))
-                       (with-temp-file file))
-                     file))))
+                  (or file (read-file-name prompt default default)))))
     (lexical-let* ((filename (read filename "File: " buffer-file-name))
-                   (output (make (read output "Output: " filename)))
+                   (output (let ((file (read output "Output: " filename)))
+                             (if (file-exists-p file)
+                                 file
+                               (when (or apples-compile-create-file-flag
+                                         (y-or-n-p
+                                          (format "apples: %s doesn't exist; make it? "
+                                                  file)))
+                                 (let ((dir (file-name-directory file)))
+                                   (unless (file-directory-p dir)
+                                     (mkdir dir t))
+                                   (with-temp-file file))
+                                 file))))
                    (buf (get-buffer-create " *apples-compile*"))
                    (args `("-o" ,output ,filename))
                    msg)
@@ -540,12 +539,14 @@ apples: Process is still running; kill it? ")
 To specify the default query, set `apples-decompile-query'."
   (case (or apples-decompile-query
             (ignore-errors
-              (flet ((prop (s) (propertize (concat "[" (upcase s) "]")
-                                           'face '(:weight bold))))
-                (read-char
-                 (format "%s%sverwrite file %snsert script %sopy script"
-                         (propertize "Select: " 'face 'apples-result-prompt)
-                         (prop "o") (prop "i") (prop "c"))))))
+              (read-char
+               (apply #'format
+                      "%s%sverwrite file %snsert script %sopy script"
+                      (propertize "Select: " 'face 'apples-result-prompt)
+                      (mapcar (lambda (s)
+                                (propertize (concat "[" (upcase s) "]")
+                                            'face '(:weight bold)))
+                              '("o" "i" "c"))))))
     (?o (let ((buf (get-file-buffer filename)))
           (if buf
               (with-current-buffer buf
@@ -827,7 +828,7 @@ whitespaces are deleted."
   "Parse current and previous lines then return the values."
   (let ((prev-bol (unless (= (point-at-bol) (point-min))
                     (apples-ideal-prev-bol)))
-        (cchar-re (concat (apples-continuation-char) "\\s-*$"))
+        (cchar-re (concat (apples-continuation-char) "$"))
         prev-indent prev-lword prev-lstr pprev-bol prev-cchar-p pprev-cchar-p)
     (flet ((cchar? (lstr) (string-match cchar-re lstr)))
       (when prev-bol
@@ -986,9 +987,9 @@ specified, also highlight the matching statement."
     (when eword
       (insert "end " eword)
       (when apples-end-completion-hl
-        (apples-end-completion-hl apples-end-completion-hl bol bword eword)))))
+        (apples-end-completion-hl bol bword eword)))))
 
-(defun apples-end-completion-hl (where bol bword eword)
+(defun apples-end-completion-hl (bol bword eword)
   (destructuring-bind ((bov . eov) beg pos)
       (values (apples-plist-get :end-ovs)
               (save-excursion
@@ -996,7 +997,7 @@ specified, also highlight the matching statement."
                 (skip-chars-forward " \t")
                 (point))
               (point))
-    (case where
+    (case apples-end-completion-hl
       (region (move-overlay bov beg pos))
       (words  (move-overlay bov beg (+ beg (length bword)))
               (move-overlay eov (- pos (length eword) 4) pos)))
@@ -1347,13 +1348,14 @@ See also `font-lock-defaults' and `font-lock-keywords'.")
 
 (defvar apples-imenu-generic-expression
   (nreverse
-   (flet ((cat (&rest s) (apples-replace-re-comma->spaces (apply #'concat s)))
-          (ptn (title &rest re) (list title (apply #'cat "^\\s-*" re) 1)))
-     (list
-      (ptn "Handlers"     "\\(?:on\\|to\\),\\(.+\\)$" )
-      (ptn "Tells"        "tell,\\(.+\\)$"            )
-      (ptn "Variables"    "set,\\(.+\\),to"           )
-      )))
+   (mapcar (lambda (pair)
+             `(,(car pair)
+               ,(concat "^\\s-*" (apples-replace-re-comma->spaces (cdr pair)))
+               1))
+           '(("Handlers"  . "\\(?:on\\|to\\),\\(.+\\)$" )
+             ("Tells"     . "tell,\\(.+\\)$"            )
+             ("Variables" . "set,\\(.+\\),to"           )
+             )))
   "Imenu index pattern for AppleScript. See also `imenu-generic-expression'.")
 
 
