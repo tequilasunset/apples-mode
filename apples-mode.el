@@ -601,7 +601,7 @@ To specify the default query, set `apples-decompile-query'."
           "    open \"%s\""
           "    tell document \"%s\""
           "        set contents to \"%s\""
-          "        save"
+          ;; "        save"
           "        execute"
           "    end tell"
           "end tell")
