@@ -228,8 +228,8 @@ See also `apples-deindenters' and `apples-noindent-regexps'."
    (lambda (re) (concat "^" (apples-replace-re-comma->spaces re)))
    '(;; if foo then bar
      "if\\>.+\\<then,\\<"
-     ;; tell application "foo" to bar
-     "tell,application,\"[[:alnum:]_ ]+\",to,\\<"
+     ;; tell foo to bar
+     "tell\\>.+\\<to,\\<"
      ))
   "Regexps match to previous line, which invoke the no-indentation of
 current line. It means that the indentation of current line will
