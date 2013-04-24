@@ -4,6 +4,7 @@
 
 ;; Author: tequilasunset <tequilasunset.mac@gmail.com>
 ;; Keywords: AppleScript, languages
+;; Version: 0.0.2
 (defconst apples-mode-version "0.0.2"
   "The Current version of `apples-mode'.")
 
