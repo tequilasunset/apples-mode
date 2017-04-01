@@ -1,8 +1,13 @@
 ;;; apples-mode.el --- Major mode for editing and executing AppleScript code
 
-;; Copyright (C) 2017 tequilasunset
+;; Version 0.0.2 works with OSX up to 10.9: "AppleScript Editor"
+;; Version 0.0.3 works with OSX from 10.10 on: "Script Editor"
+
+;; Copyright (C) 2011 tequilasunset
+;; Copyright (C) 2017 Jean-Christophe Helary
 
 ;; Author: tequilasunset <tequilasunset.mac@gmail.com>
+;; Contributor: Jean-Christophe Helary <jean.christophe.helary@gmail.com>
 ;; Keywords: AppleScript, languages
 (defconst apples-mode-version "0.0.3"
   "The Current version of `apples-mode'.")
@@ -68,11 +73,12 @@
 ;;; TODO:
 
 ;; Add autopairing of "", (), tell/end etc.
-
+;; Investigate the code that calls Applescript Runner: the bug seems fixed
+;; and the app does not exist anymore
 
 ;;; Code:
 
-(require 'cl)
+(require 'cl-lib)
 (require 'easymenu)
 (require 'newcomment)
 
@@ -382,6 +388,9 @@ Otherwise delete stored info."
    (format
     "tell application \"AppleScript Runner\" to do script \"%s\"" f/s)))
 
+# Applescript Runner does not exist anymore
+# The bug itself seems to be fixed
+
 (defun apples-parse-error (result)
   (destructuring-bind
       (err-ov (actual-beg . err-buf)
@@ -603,7 +612,7 @@ To specify the default query, set `apples-decompile-query'."
       (format
        (mapconcat
         'identity
-        '("tell application \"AppleScript Editor\""
+        '("tell application \"Script Editor\""
           "    activate"
           "    open \"%s\""
           "    tell document \"%s\""
@@ -1100,6 +1109,9 @@ specified, also highlight the matching statement."
                  ("current application"
                   "Macintosh HD:System:Library:CoreServices:AppleScript Runner.app:"
                   "/System/Library/CoreServices/AppleScript Runner.app/")
+
+		 # Applescript Runner ?!?
+		 
                  ("current user folder"
                   "Macintosh HD:Users:username:"
                   "/Users/username/")
