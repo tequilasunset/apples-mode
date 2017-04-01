@@ -73,8 +73,7 @@
 ;;; TODO:
 
 ;; Add autopairing of "", (), tell/end etc.
-;; Investigate the code that calls Applescript Runner: the bug seems fixed
-;; and the app does not exist anymore
+
 
 ;;; Code:
 
@@ -388,8 +387,9 @@ Otherwise delete stored info."
    (format
     "tell application \"AppleScript Runner\" to do script \"%s\"" f/s)))
 
-# Applescript Runner does not exist anymore
-# The bug itself seems to be fixed
+# The issue existed because osascript did not have an UI.
+# This has been fixed in 10.9:
+# https://developer.apple.com/library/content/releasenotes/AppleScript/RN-AppleScript/RN-10_9/RN-10_9.html#//apple_ref/doc/uid/TP40000982-CH109-SW1
 
 (defun apples-parse-error (result)
   (destructuring-bind
