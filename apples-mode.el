@@ -1,10 +1,15 @@
 ;;; apples-mode.el --- Major mode for editing and executing AppleScript code
 
+;; Version 0.0.2 works with OSX up to 10.9: "AppleScript Editor"
+;; Version 0.0.3 works with OSX from 10.10 on: "Script Editor"
+
 ;; Copyright (C) 2011 tequilasunset
+;; Copyright (C) 2017 Jean-Christophe Helary
 
 ;; Author: tequilasunset <tequilasunset.mac@gmail.com>
+;; Contributor: Jean-Christophe Helary <jean.christophe.helary@gmail.com>
 ;; Keywords: AppleScript, languages
-(defconst apples-mode-version "0.0.2"
+(defconst apples-mode-version "0.0.3"
   "The Current version of `apples-mode'.")
 
 ;; This program is free software: you can redistribute it and/or modify
@@ -54,18 +59,25 @@
 
 ;;; Tested:
 
+;; version 0.0.2:
 ;; GNU Emacs 23.2.1 on Mac OS X 10.6.6
 ;; AppleScript 2.1.2
+
+;; version 0.0.3:
+;; Gnu Emacs 25.1.1 on Mac OS X 10.12.3
+;; Applescript 2.5
 
 ;;; Known Bugs:
 
 
 ;;; TODO:
 
+;; Add autopairing of "", (), tell/end etc.
+
 
 ;;; Code:
 
-(require 'cl)
+(require 'cl-lib)
 (require 'easymenu)
 (require 'newcomment)
 
@@ -375,6 +387,10 @@ Otherwise delete stored info."
    (format
     "tell application \"AppleScript Runner\" to do script \"%s\"" f/s)))
 
+# The issue existed because osascript did not have an UI.
+# This has been fixed in 10.9:
+# https://developer.apple.com/library/content/releasenotes/AppleScript/RN-AppleScript/RN-10_9/RN-10_9.html#//apple_ref/doc/uid/TP40000982-CH109-SW1
+
 (defun apples-parse-error (result)
   (destructuring-bind
       (err-ov (actual-beg . err-buf)
@@ -507,7 +523,7 @@ apples: Process is still running; kill it? ")
 (defun apples-compile (&optional filename output)
   "Compile FILENAME into OUTPUT."
   (interactive)
-  (labels ((read (file prompt default)
+  (cl-labels ((read (file prompt default)
                  (expand-file-name
                   (or file (read-file-name prompt default default)))))
     (lexical-let* ((filename (read filename "File: " buffer-file-name))
@@ -591,12 +607,12 @@ To specify the default query, set `apples-decompile-query'."
   "Send region or current buffer to AppleScript Editor and run it."
   (interactive)
   (ignore-errors
-    (do-applescript
+    (apples-do-applescript
      (apples-encode-string
       (format
        (mapconcat
         'identity
-        '("tell application \"AppleScript Editor\""
+        '("tell application \"Script Editor\""
           "    activate"
           "    open \"%s\""
           "    tell document \"%s\""
@@ -661,14 +677,14 @@ To specify the default query, set `apples-decompile-query'."
 
 ;; Open Dictionary index
 (defun apples-open-dict-index ()
-  "Open dictionary index in AppleScript Editor."
+  "Open dictionary index in Script Editor."
   (interactive)
-  (do-applescript
+  (apples-do-applescript
    (mapconcat
     'identity
-    '("tell application \"AppleScript Editor\" to activate"
+    '("tell application \"Script Editor\" to activate"
       "tell application \"System Events\""
-      "    tell process \"AppleScript Editor\""
+      "    tell process \"Script Editor\""
       "        key code 31 using {shift down, command down}" ; Command-Shift-O
       "    end tell"
       "end tell")
@@ -832,7 +848,7 @@ whitespaces are deleted."
                     (apples-ideal-prev-bol)))
         (cchar-re (concat (apples-continuation-char) "$"))
         prev-indent prev-lword prev-lstr pprev-bol prev-cchar-p pprev-cchar-p)
-    (flet ((cchar? (lstr) (string-match cchar-re lstr)))
+    (cl-flet ((cchar? (lstr) (string-match cchar-re lstr)))
       (when prev-bol
         (save-excursion
           (goto-char prev-bol)
@@ -867,7 +883,7 @@ whitespaces are deleted."
         (if bol-is-in-comment
             (setq indent (or prev-indent 0))
           ;; bol is neither in string nor in comment
-          (flet ((match? (regs str) (and regs str (apples-string-match regs str)))
+          (cl-flet ((match? (regs str) (and regs str (apples-string-match regs str)))
                  (member? (str lst) (and str lst (member str lst))))
             (let* ((cchar-indent?   (and prev-cchar-p (not pprev-cchar-p)))
                    (prev-indent?    (match? apples-indent-regexps prev-lstr))
@@ -1093,6 +1109,9 @@ specified, also highlight the matching statement."
                  ("current application"
                   "Macintosh HD:System:Library:CoreServices:AppleScript Runner.app:"
                   "/System/Library/CoreServices/AppleScript Runner.app/")
+
+		 # Applescript Runner ?!?
+		 
                  ("current user folder"
                   "Macintosh HD:Users:username:"
                   "/Users/username/")
@@ -1207,7 +1226,7 @@ specified, also highlight the matching statement."
 
 (defvar apples-font-lock-keywords
   (let ((i apples-identifier))
-    (flet ((kws (type) (apples-replace-re-space->spaces
+    (cl-flet ((kws (type) (apples-replace-re-space->spaces
                         (regexp-opt (apples-keywords type) 'words)))
            (cat (&rest s) (apples-replace-re-comma->spaces (apply #'concat s))))
       `(
