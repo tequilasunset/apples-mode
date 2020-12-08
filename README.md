@@ -1,3 +1,6 @@
+[![MELPA](https://melpa.org/packages/apples-mode-badge.svg)](https://melpa.org/#/apples-mode)
+[![MELPA Stable](https://stable.melpa.org/packages/apples-mode-badge.svg)](https://stable.melpa.org/#/apples-mode)
+
 apples-mode
 ===========
 
