@@ -593,7 +593,7 @@ To specify the default query, set `apples-decompile-query'."
   "Send region or current buffer to AppleScript Editor and run it."
   (interactive)
   (ignore-errors
-    (do-applescript
+    (apples-do-applescript
      (apples-encode-string
       (format
        (mapconcat
@@ -665,7 +665,7 @@ To specify the default query, set `apples-decompile-query'."
 (defun apples-open-dict-index ()
   "Open dictionary index in AppleScript Editor."
   (interactive)
-  (do-applescript
+  (apples-do-applescript
    (mapconcat
     'identity
     '("tell application \"AppleScript Editor\" to activate"
