@@ -65,7 +65,9 @@
 
 ;;; Code:
 
-(require 'cl)
+(eval-when-compile
+  (require 'cl-lib))    ; use: cl-labels, cl-every, cl-some, cl-flet
+
 (require 'easymenu)
 (require 'newcomment)
 
@@ -507,7 +509,7 @@ apples: Process is still running; kill it? ")
 (defun apples-compile (&optional filename output)
   "Compile FILENAME into OUTPUT."
   (interactive)
-  (labels ((read (file prompt default)
+  (cl-labels ((read (file prompt default)
                  (expand-file-name
                   (or file (read-file-name prompt default default)))))
     (lexical-let* ((filename (read filename "File: " buffer-file-name))
@@ -526,7 +528,7 @@ apples: Process is still running; kill it? ")
                    (buf (get-buffer-create " *apples-compile*"))
                    (args `("-o" ,output ,filename))
                    msg)
-      (when (every 'file-exists-p `(,filename ,output))
+      (when (cl-every 'file-exists-p `(,filename ,output))
         (setq msg (message "Compiling..."))
         (set-process-sentinel
          (apply #'start-process "apples-compile" buf "osacompile" args)
@@ -792,7 +794,7 @@ are skipped.\n
                      (let ((face-prop (save-excursion
                                         (skip-chars-forward " \t")
                                         (get-text-property (point) 'face))))
-                       (some (lambda (face)
+                       (cl-some (lambda (face)
                                (if (listp face-prop)
                                    (memq face face-prop)
                                  (eq face face-prop)))
@@ -824,7 +826,7 @@ whitespaces are deleted."
 
 (defsubst apples-string-match (regexps string)
   "Unlike `string-match', first argument has to be a list of REGEXPS."
-  (some (lambda (re) (string-match re string)) regexps))
+  (cl-some (lambda (re) (string-match re string)) regexps))
 
 (defun apples-parse-lines ()
   "Parse current and previous lines then return the values."
@@ -832,7 +834,7 @@ whitespaces are deleted."
                     (apples-ideal-prev-bol)))
         (cchar-re (concat (apples-continuation-char) "$"))
         prev-indent prev-lword prev-lstr pprev-bol prev-cchar-p pprev-cchar-p)
-    (flet ((cchar? (lstr) (string-match cchar-re lstr)))
+    (cl-flet ((cchar? (lstr) (string-match cchar-re lstr)))
       (when prev-bol
         (save-excursion
           (goto-char prev-bol)
@@ -867,8 +869,8 @@ whitespaces are deleted."
         (if bol-is-in-comment
             (setq indent (or prev-indent 0))
           ;; bol is neither in string nor in comment
-          (flet ((match? (regs str) (and regs str (apples-string-match regs str)))
-                 (member? (str lst) (and str lst (member str lst))))
+          (cl-flet ((match? (regs str) (and regs str (apples-string-match regs str)))
+                    (member? (str lst) (and str lst (member str lst))))
             (let* ((cchar-indent?   (and prev-cchar-p (not pprev-cchar-p)))
                    (prev-indent?    (match? apples-indent-regexps prev-lstr))
                    (prev-noindent?  (match? apples-noindent-regexps prev-lstr))
@@ -1207,9 +1209,9 @@ specified, also highlight the matching statement."
 
 (defvar apples-font-lock-keywords
   (let ((i apples-identifier))
-    (flet ((kws (type) (apples-replace-re-space->spaces
-                        (regexp-opt (apples-keywords type) 'words)))
-           (cat (&rest s) (apples-replace-re-comma->spaces (apply #'concat s))))
+    (cl-flet ((kws (type) (apples-replace-re-space->spaces
+                           (regexp-opt (apples-keywords type) 'words)))
+              (cat (&rest s) (apples-replace-re-comma->spaces (apply #'concat s))))
       `(
         ("\\<error\\>"                          0 'apples-error                )
         (,(kws 'statements)                     1 'apples-statements           )
